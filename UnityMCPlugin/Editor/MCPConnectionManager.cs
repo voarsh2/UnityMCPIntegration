@@ -29,11 +29,13 @@ namespace Plugins.GamePilot.Editor.MCP
         public event Action OnDisconnected;
         public event Action<string> OnError;
         
+        // Properly track the connection state using the WebSocket state and our own flag
         public bool IsConnected => isConnected && webSocket?.State == WebSocketState.Open;
         public string LastErrorMessage => lastErrorMessage;
         public int MessagesSent => messagesSent;
         public int MessagesReceived => messagesReceived;
         public int ReconnectAttempts => reconnectAttempts;
+        public Uri ServerUri => serverUri;
         
         public MCPConnectionManager()
         {
@@ -44,11 +46,33 @@ namespace Plugins.GamePilot.Editor.MCP
         
         public async void Connect()
         {
-            if (webSocket != null && 
-                (webSocket.State == WebSocketState.Connecting || 
-                 webSocket.State == WebSocketState.Open))
+            // Double check connections that look open but may be stale
+            if (webSocket != null && webSocket.State == WebSocketState.Open)
             {
-                MCPLogger.Log(ComponentName, "WebSocket already connected or connecting");
+                try
+                {
+                    // Try to send a ping to verify connection is truly active
+                    bool connectionIsActive = await TestConnection();
+                    if (connectionIsActive)
+                    {
+                        MCPLogger.Log(ComponentName, "WebSocket already connected and active");
+                        return;
+                    }
+                    else
+                    {
+                        MCPLogger.Log(ComponentName, "WebSocket appears open but is stale, reconnecting...");
+                        // Fall through to reconnection logic
+                    }
+                }
+                catch (Exception)
+                {
+                    MCPLogger.Log(ComponentName, "WebSocket appears open but failed ping test, reconnecting...");
+                    // Fall through to reconnection logic
+                }
+            }
+            else if (webSocket != null && webSocket.State == WebSocketState.Connecting)
+            {
+                MCPLogger.Log(ComponentName, "WebSocket is already connecting");
                 return;
             }
             
@@ -83,6 +107,7 @@ namespace Plugins.GamePilot.Editor.MCP
                 await webSocket.ConnectAsync(serverUri, linkedCts.Token);
                 isConnected = true;
                 
+                MCPLogger.Log(ComponentName, "Successfully connected to MCP Server");
                 OnConnected?.Invoke();
                 StartReceiving();
             }
@@ -109,6 +134,27 @@ namespace Plugins.GamePilot.Editor.MCP
                 OnError?.Invoke(lastErrorMessage);
                 isConnected = false;
                 OnDisconnected?.Invoke();
+            }
+        }
+        
+        // Test if connection is still valid with a simple ping
+        private async Task<bool> TestConnection()
+        {
+            try
+            {
+                // Simple ping test - send a 1-byte message
+                byte[] pingData = new byte[1] { 0 };
+                await webSocket.SendAsync(
+                    new ArraySegment<byte>(pingData),
+                    WebSocketMessageType.Binary,
+                    true,
+                    CancellationToken.None);
+                
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
         

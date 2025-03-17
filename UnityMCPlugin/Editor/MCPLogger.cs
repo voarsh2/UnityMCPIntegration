@@ -44,6 +44,12 @@ namespace Plugins.GamePilot.Editor.MCP
         /// <param name="enabled">Whether logging should be enabled</param>
         public static void SetComponentLoggingEnabled(string componentName, bool enabled)
         {
+            // Make sure component exists before setting state
+            if (!componentLoggingEnabled.ContainsKey(componentName))
+            {
+                InitializeComponent(componentName, false);
+            }
+            
             componentLoggingEnabled[componentName] = enabled;
         }
         
@@ -60,7 +66,7 @@ namespace Plugins.GamePilot.Editor.MCP
             // If component isn't registered, assume it's disabled
             if (!componentLoggingEnabled.ContainsKey(componentName))
             {
-                componentLoggingEnabled[componentName] = false;
+                InitializeComponent(componentName, false);
                 return false;
             }
             

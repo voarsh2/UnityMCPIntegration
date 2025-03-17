@@ -50,7 +50,7 @@ namespace Plugins.GamePilot.Editor.MCP
                 // Start connection
                 connectionManager.Connect();
                 
-                // Register update for periodic tasks
+                // Register update for connection checking only, NOT periodic updates
                 EditorApplication.update += Update;
                 
                 isInitialized = true;
@@ -72,8 +72,8 @@ namespace Plugins.GamePilot.Editor.MCP
                 // Send client info to server
                 messageSender.SendClientInfoAsync().ConfigureAwait(false);
                 
-                // Start sending periodic updates
-                EditorApplication.update += SendPeriodicUpdates;
+                // Don't automatically start sending periodic updates
+                // EditorApplication.update += SendPeriodicUpdates; <-- REMOVE THIS LINE
             }
             catch (Exception ex)
             {
@@ -87,7 +87,7 @@ namespace Plugins.GamePilot.Editor.MCP
             {
                 MCPLogger.Log(ComponentName, "Disconnected from MCP server");
                 
-                // Stop sending periodic updates
+                // Stop sending periodic updates if they were started manually
                 EditorApplication.update -= SendPeriodicUpdates;
             }
             catch (Exception ex)
@@ -113,6 +113,7 @@ namespace Plugins.GamePilot.Editor.MCP
                 {
                     connectionManager?.CheckConnection();
                 }
+                // No other periodic tasks should be here
             }
             catch (Exception ex)
             {
@@ -120,6 +121,8 @@ namespace Plugins.GamePilot.Editor.MCP
             }
         }
         
+        // Keep this method but don't register it automatically
+        // This will be called only when the server explicitly requests updates
         private static void SendPeriodicUpdates()
         {
             try
@@ -179,6 +182,23 @@ namespace Plugins.GamePilot.Editor.MCP
             catch (Exception ex)
             {
                 MCPLogger.LogException(ComponentName, ex);
+            }
+        }
+
+        // Add a public method to manually start/stop editor state updates
+        public static void EnablePeriodicUpdates(bool enable)
+        {
+            if (enable)
+            {
+                // Start sending periodic updates
+                EditorApplication.update += SendPeriodicUpdates;
+                MCPLogger.Log(ComponentName, "Periodic updates enabled");
+            }
+            else
+            {
+                // Stop sending periodic updates
+                EditorApplication.update -= SendPeriodicUpdates;
+                MCPLogger.Log(ComponentName, "Periodic updates disabled");
             }
         }
     }

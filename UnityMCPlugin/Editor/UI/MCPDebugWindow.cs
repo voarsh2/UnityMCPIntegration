@@ -129,17 +129,25 @@ namespace Plugins.GamePilot.Editor.MCP
         {
             var loggingContainer = root.Q<VisualElement>("logging-container");
             
+            // Register MCPDebugWindow as a component for logging
+            MCPLogger.InitializeComponent("MCPDebugWindow", false);
+            
             // Global logging toggle
             var globalToggle = new Toggle("Enable All Logging");
             globalToggle.value = MCPLogger.GlobalLoggingEnabled;
             globalToggle.RegisterValueChangedCallback(evt => {
                 MCPLogger.GlobalLoggingEnabled = evt.newValue;
-                // Update all component toggles to show they're effectively disabled/enabled
+                
+                // First make sure all components are properly initialized before updating UI
+                EnsureComponentsInitialized();
+                
+                // Update all component toggles to show they're enabled/disabled
                 foreach (var componentName in MCPLogger.GetRegisteredComponents())
                 {
                     if (logToggles.TryGetValue(componentName, out var toggle))
                     {
-                        toggle.SetEnabled(evt.newValue);
+                        // Don't disable the toggle UI, just update its interactable state
+                        toggle.SetEnabled(true);
                     }
                 }
             });
@@ -153,6 +161,9 @@ namespace Plugins.GamePilot.Editor.MCP
             separator.style.backgroundColor = new Color(0.3f, 0.3f, 0.3f);
             loggingContainer.Add(separator);
             
+            // Ensure all components are initialized
+            EnsureComponentsInitialized();
+            
             // Create toggles for standard components
             string[] standardComponents = {
                 "MCPManager",
@@ -160,7 +171,8 @@ namespace Plugins.GamePilot.Editor.MCP
                 "MCPDataCollector",
                 "MCPMessageHandler",
                 "MCPCodeExecutor",
-                "MCPMessageSender"
+                "MCPMessageSender",
+                "MCPDebugWindow"  // Add the debug window itself
             };
             
             foreach (string componentName in standardComponents)
@@ -178,11 +190,33 @@ namespace Plugins.GamePilot.Editor.MCP
             }
         }
         
+        // Make sure all components are initialized in the logger
+        private void EnsureComponentsInitialized()
+        {
+            string[] standardComponents = {
+                "MCPManager",
+                "MCPConnectionManager",
+                "MCPDataCollector",
+                "MCPMessageHandler",
+                "MCPCodeExecutor",
+                "MCPMessageSender",
+                "MCPDebugWindow"
+            };
+            
+            foreach (string componentName in standardComponents)
+            {
+                MCPLogger.InitializeComponent(componentName, false);
+            }
+        }
+        
         private void CreateLoggingToggle(VisualElement container, string componentName, string label)
         {
             var toggle = new Toggle(label);
             toggle.value = MCPLogger.GetComponentLoggingEnabled(componentName);
-            toggle.SetEnabled(MCPLogger.GlobalLoggingEnabled);
+            
+            // Make all toggles interactive, they'll work based on global enabled state
+            toggle.SetEnabled(true);
+            
             toggle.RegisterValueChangedCallback(evt => OnLoggingToggleChanged(componentName, evt.newValue));
             container.Add(toggle);
             logToggles[componentName] = toggle;
@@ -239,6 +273,12 @@ namespace Plugins.GamePilot.Editor.MCP
             bool isInitialized = MCPManager.IsInitialized;
             bool isConnected = MCPManager.IsConnected;
             
+            // Only log status if logging is enabled
+            if (MCPLogger.IsLoggingEnabled("MCPDebugWindow"))
+            {
+                Debug.Log($"[MCP] [MCPDebugWindow] Status check: IsInitialized={isInitialized}, IsConnected={isConnected}");
+            }
+            
             // Update status label
             if (!isInitialized)
             {
@@ -253,6 +293,13 @@ namespace Plugins.GamePilot.Editor.MCP
                 connectionStatusLabel.RemoveFromClassList("status-disconnected");
                 connectionStatusLabel.RemoveFromClassList("status-connecting");
                 connectionStatusLabel.AddToClassList("status-connected");
+                
+                // If we're in the connected state, make sure connectionStartTime is set
+                // This ensures the timer works properly
+                if (!connectionStartTime.HasValue)
+                {
+                    connectionStartTime = DateTime.Now;
+                }
             }
             else
             {
@@ -260,6 +307,9 @@ namespace Plugins.GamePilot.Editor.MCP
                 connectionStatusLabel.RemoveFromClassList("status-connected");
                 connectionStatusLabel.RemoveFromClassList("status-connecting");
                 connectionStatusLabel.AddToClassList("status-disconnected");
+                
+                // Reset connection time when disconnected
+                connectionStartTime = null;
             }
             
             // Update button states
@@ -277,20 +327,28 @@ namespace Plugins.GamePilot.Editor.MCP
                 connectionTimeLabel.text = "00:00:00";
             }
             
-            // Update server URL
-            serverUrlLabel.text = "ws://localhost:8080"; // Would come from your MCP connection
+            // Update server URL - get actual URL from connection manager if possible
+            var connectionManager = GetConnectionManager();
+            if (connectionManager != null)
+            {
+                // Try to get the actual server URL from the connection manager
+                serverUrlLabel.text = connectionManager.ServerUri?.ToString() ?? "ws://localhost:8080";
+            }
+            else
+            {
+                serverUrlLabel.text = "ws://localhost:8080";
+            }
             
             // Update statistics if available
             if (isInitialized)
             {
-                // Get connection statistics
-                var connManager = GetConnectionManager();
-                if (connManager != null)
+                // Get connection statistics - using the connection manager variable we already retrieved
+                if (connectionManager != null)
                 {
-                    messagesSentLabel.text = connManager.MessagesSent.ToString();
-                    messagesReceivedLabel.text = connManager.MessagesReceived.ToString();
-                    reconnectAttemptsLabel.text = connManager.ReconnectAttempts.ToString();
-                    lastErrorLabel.text = connManager.LastErrorMessage;
+                    messagesSentLabel.text = connectionManager.MessagesSent.ToString();
+                    messagesReceivedLabel.text = connectionManager.MessagesReceived.ToString();
+                    reconnectAttemptsLabel.text = connectionManager.ReconnectAttempts.ToString();
+                    lastErrorLabel.text = connectionManager.LastErrorMessage;
                 }
                 else
                 {
