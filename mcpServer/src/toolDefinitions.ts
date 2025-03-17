@@ -136,20 +136,80 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
           type: 'object',
           description: 'Returns a list of matching GameObjects'
         }
+      },
+      {
+        name: 'verify_connection',
+        description: 'Verify that the MCP server has an active connection to Unity Editor',
+        category: 'Connection',
+        tags: ['unity', 'editor', 'connection'],
+        inputSchema: {
+          type: 'object',
+          properties: {
+            requestEditorState: {
+              type: 'boolean',
+              description: 'Whether to request fresh editor state from Unity',
+              default: false
+            }
+          },
+          additionalProperties: false
+        },
+        returns: {
+          type: 'object',
+          description: 'Returns connection status information'
+        }
       }
     ],
   }));
 
   // Handle tool calls
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+
+    // Special case for verify_connection which should work even if not connected
+    if (name === 'verify_connection') {
+      try {
+        const isConnected = wsHandler.isConnected();
+        
+        // Optionally request a fresh editor state
+        if (args?.requestEditorState === true && isConnected) {
+          wsHandler.requestEditorState();
+        }
+        
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              connected: isConnected,
+              timestamp: new Date().toISOString(),
+              message: isConnected 
+                ? 'Unity Editor is connected' 
+                : 'Unity Editor is not connected. Please ensure the Unity Editor is running with the MCP plugin.'
+            }, null, 2)
+          }]
+        };
+      } catch (error) {
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              connected: false,
+              timestamp: new Date().toISOString(),
+              message: 'Error checking connection status',
+              error: error instanceof Error ? error.message : 'Unknown error'
+            }, null, 2)
+          }]
+        };
+      }
+    }
+
+    // For all other tools, verify connection first
     if (!wsHandler.isConnected()) {
       throw new McpError(
         ErrorCode.InternalError,
-        'Unity Editor is not connected. Please ensure the Unity Editor is running with the MCP plugin.'
+        'Unity Editor is not connected. Please first verify the connection using the verify_connection tool, ' +
+        'and ensure the Unity Editor is running with the MCP plugin and that the WebSocket connection is established.'
       );
     }
-
-    const { name, arguments: args } = request.params;
 
     switch (name) {
       case 'get_editor_state': {
@@ -231,6 +291,13 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
               throw new McpError(
                 ErrorCode.InvalidParams,
                 'The code attempted to access a null object. Please check that all GameObject references exist.'
+              );
+            }
+
+            if (error.message.includes('not connected')) {
+              throw new McpError(
+                ErrorCode.InternalError,
+                'Unity Editor connection was lost during command execution. Please verify the connection and try again.'
               );
             }
           }

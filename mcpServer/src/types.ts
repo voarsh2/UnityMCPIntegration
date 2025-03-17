@@ -35,6 +35,11 @@ export interface LogMessage {
   data: LogEntry;
 }
 
+export interface PongMessage {
+  type: 'pong';
+  data: { timestamp: number };
+}
+
 // Message types from Server to Unity
 export interface ExecuteEditorCommandMessage {
   type: 'executeEditorCommand';
@@ -43,11 +48,34 @@ export interface ExecuteEditorCommandMessage {
   };
 }
 
+export interface HandshakeMessage {
+  type: 'handshake';
+  data: { message: string };
+}
+
+export interface PingMessage {
+  type: 'ping';
+  data: { timestamp: number };
+}
+
+export interface RequestEditorStateMessage {
+  type: 'requestEditorState';
+  data: Record<string, never>;
+}
+
 // Union type for all Unity messages
 export type UnityMessage = 
   | EditorStateMessage 
   | CommandResultMessage 
-  | LogMessage;
+  | LogMessage
+  | PongMessage;
+
+// Union type for all Server messages
+export type ServerMessage =
+  | ExecuteEditorCommandMessage
+  | HandshakeMessage
+  | PingMessage
+  | RequestEditorStateMessage;
 
 // Command result handling
 export interface CommandPromise {

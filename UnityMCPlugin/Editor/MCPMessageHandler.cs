@@ -42,7 +42,7 @@ namespace Plugins.GamePilot.Editor.MCP
                         await HandleTogglePlayModeAsync();
                         break;
                     
-                    case "executeCommand":
+                    case "executeEditorCommand": // Changed from "executeCommand" to match new server message type
                         await HandleExecuteCommandAsync(message.Data);
                         break;
                     
@@ -51,6 +51,7 @@ namespace Plugins.GamePilot.Editor.MCP
                         break;
                     
                     case "getEditorState":
+                    case "requestEditorState": // Added new message type from server
                         await HandleGetEditorStateAsync(message.Data);
                         break;
                         
@@ -66,6 +67,10 @@ namespace Plugins.GamePilot.Editor.MCP
                         await HandleGetGameObjectDetailsAsync(message.Data);
                         break;
                         
+                    case "handshake": // Added to handle server handshake message
+                        await HandleHandshakeAsync(message.Data);
+                        break;
+                        
                     default:
                         Debug.LogWarning($"[MCP] Unknown message type: {message.Type}");
                         break;
@@ -74,6 +79,27 @@ namespace Plugins.GamePilot.Editor.MCP
             catch (Exception ex)
             {
                 Debug.LogError($"[MCP] Error handling message: {ex.Message}\nMessage: {messageJson}");
+            }
+        }
+        
+        // Add a new handler for handshake messages
+        private async Task HandleHandshakeAsync(JToken data)
+        {
+            try
+            {
+                string message = data["message"]?.ToString() ?? "Server connected";
+                Debug.Log($"[MCP] Handshake received: {message}");
+                
+                // Send editor state in response to handshake to establish connection
+                var editorState = dataCollector.GetEditorState();
+                await messageSender.SendEditorStateAsync(editorState);
+                
+                // Enable periodic updates to keep connection alive
+                MCPManager.EnablePeriodicUpdates(true);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP] Error handling handshake: {ex.Message}");
             }
         }
         
@@ -135,7 +161,8 @@ namespace Plugins.GamePilot.Editor.MCP
         {
             try
             {
-                string commandId = data["commandId"]?.ToString() ?? Guid.NewGuid().ToString();
+                // Support both old and new parameter naming
+                string commandId = data["commandId"]?.ToString() ?? data["id"]?.ToString() ?? Guid.NewGuid().ToString();
                 string code = data["code"]?.ToString();
                 
                 if (string.IsNullOrEmpty(code))
@@ -170,8 +197,29 @@ namespace Plugins.GamePilot.Editor.MCP
         {
             try
             {
-                string pingId = data["pingId"]?.ToString() ?? Guid.NewGuid().ToString();
-                await messageSender.SendPingResponseAsync(pingId);
+                // Handle the new ping message format used by our updated MCP server
+                if (data["timestamp"] != null)
+                {
+                    long timestamp = data["timestamp"].Value<long>();
+                    string pingId = data["pingId"]?.ToString() ?? Guid.NewGuid().ToString();
+                    
+                    // Send a pong response using the updated format
+                    await messageSender.SendMessageAsync(JsonConvert.SerializeObject(new
+                    {
+                        type = "pong",
+                        data = new
+                        {
+                            timestamp = DateTime.UtcNow.ToString("o"),
+                            pingId = pingId
+                        }
+                    }));
+                    
+                    return;
+                }
+                
+                // Fallback to the original ping handling for compatibility
+                string originalPingId = data["pingId"]?.ToString() ?? Guid.NewGuid().ToString();
+                await messageSender.SendPingResponseAsync(originalPingId);
             }
             catch (Exception ex)
             {

@@ -21,6 +21,8 @@ export class WebSocketHandler {
   private readonly maxLogBufferSize = 1000;
   private commandResultPromise: CommandPromise | null = null;
   private commandStartTime: number | null = null;
+  private lastHeartbeat: number = 0;
+  private connectionEstablished: boolean = false;
 
   constructor(port: number = 8080) {
     // Initialize WebSocket Server
@@ -42,9 +44,17 @@ export class WebSocketHandler {
     this.wsServer.on('connection', (ws: WebSocket) => {
       console.error('[Unity MCP] Unity Editor connected');
       this.unityConnection = ws;
+      this.connectionEstablished = true;
+      this.lastHeartbeat = Date.now();
+      
+      // Send a simple handshake message to verify connection
+      this.sendHandshake();
 
       ws.on('message', (data: Buffer) => {
         try {
+          // Update heartbeat on any message
+          this.lastHeartbeat = Date.now();
+          
           const message = JSON.parse(data.toString()) as UnityMessage;
           console.error('[Unity MCP] Received message type:', message.type);
           this.handleUnityMessage(message);
@@ -55,13 +65,53 @@ export class WebSocketHandler {
 
       ws.on('error', (error) => {
         console.error('[Unity MCP] WebSocket error:', error);
+        this.connectionEstablished = false;
       });
 
       ws.on('close', () => {
         console.error('[Unity MCP] Unity Editor disconnected');
         this.unityConnection = null;
+        this.connectionEstablished = false;
       });
+      
+      // Set up ping interval to keep connection alive
+      const pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          this.sendPing();
+        } else {
+          clearInterval(pingInterval);
+        }
+      }, 30000); // Send ping every 30 seconds
     });
+  }
+
+  private sendHandshake() {
+    try {
+      if (this.unityConnection && this.unityConnection.readyState === WebSocket.OPEN) {
+        this.unityConnection.send(JSON.stringify({
+          type: 'handshake',
+          data: { message: 'MCP Server Connected' }
+        }));
+        console.error('[Unity MCP] Sent handshake message');
+      }
+    } catch (error) {
+      console.error('[Unity MCP] Error sending handshake:', error);
+    }
+  }
+  
+  private sendPing() {
+    try {
+      if (this.unityConnection && this.unityConnection.readyState === WebSocket.OPEN) {
+        this.unityConnection.send(JSON.stringify({
+          type: 'ping',
+          data: { timestamp: Date.now() }
+        }));
+        console.error('[Unity MCP] Sent ping');
+      }
+    } catch (error) {
+      console.error('[Unity MCP] Error sending ping:', error);
+      this.connectionEstablished = false;
+    }
   }
 
   private handleUnityMessage(message: UnityMessage) {
@@ -82,6 +132,13 @@ export class WebSocketHandler {
       case 'log':
         this.addLogEntry(message.data);
         break;
+        
+      case 'pong':
+        // Update heartbeat on pong
+        this.lastHeartbeat = Date.now();
+        this.connectionEstablished = true;
+        console.error('[Unity MCP] Received pong from Unity');
+        break;
       
       default:
         console.error('[Unity MCP] Unknown message type:', (message as any).type);
@@ -97,7 +154,7 @@ export class WebSocketHandler {
   }
 
   public async executeEditorCommand(code: string, timeoutMs: number = 5000): Promise<any> {
-    if (!this.unityConnection || this.unityConnection.readyState !== WebSocket.OPEN) {
+    if (!this.isConnected()) {
       throw new Error('Unity Editor is not connected');
     }
 
@@ -106,7 +163,7 @@ export class WebSocketHandler {
       this.commandStartTime = Date.now();
       
       // Send the command to Unity
-      this.unityConnection.send(JSON.stringify({
+      this.unityConnection!.send(JSON.stringify({
         type: 'executeEditorCommand',
         data: { code }
       }));
@@ -192,8 +249,40 @@ export class WebSocketHandler {
   }
 
   public isConnected(): boolean {
-    return this.unityConnection !== null && 
-           this.unityConnection.readyState === WebSocket.OPEN;
+    // More robust connection check
+    if (this.unityConnection === null || this.unityConnection.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    
+    // Check if we've received messages from Unity recently (within last 2 minutes)
+    if (!this.connectionEstablished) {
+      return false;
+    }
+    
+    // Check if we've received a heartbeat in the last 60 seconds
+    const heartbeatTimeout = 60000; // 60 seconds
+    if (Date.now() - this.lastHeartbeat > heartbeatTimeout) {
+      console.error('[Unity MCP] Connection may be stale - no recent communication');
+      return false;
+    }
+    
+    return true;
+  }
+  
+  public requestEditorState() {
+    if (!this.isConnected()) {
+      return;
+    }
+    
+    try {
+      this.unityConnection!.send(JSON.stringify({
+        type: 'requestEditorState',
+        data: {}
+      }));
+      console.error('[Unity MCP] Requested editor state');
+    } catch (error) {
+      console.error('[Unity MCP] Error requesting editor state:', error);
+    }
   }
 
   public async close(): Promise<void> {
