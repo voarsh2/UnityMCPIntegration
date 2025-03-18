@@ -143,6 +143,13 @@ export class WebSocketHandler {
         this.lastHeartbeat = Date.now();
         this.connectionEstablished = true;
         console.error('[Unity MCP] Received pong from Unity');
+        
+        // Check if this is a response to our ping request
+        const pingId = message.data?.pingId;
+        if (pingId && this.pendingRequests[pingId]) {
+          this.pendingRequests[pingId].resolve();
+          delete this.pendingRequests[pingId];
+        }
         break;
 
       case 'sceneInfo':
@@ -378,6 +385,43 @@ export class WebSocketHandler {
       }
     }));
     
+    return responsePromise;
+  }
+
+  public async sendPing(): Promise<boolean> {
+    if (!this.isConnected()) {
+      throw new Error('Unity Editor is not connected');
+    }
+    
+    const pingId = crypto.randomUUID();
+    
+    // Create a promise that will be resolved when we get the pong response
+    const responsePromise = new Promise<boolean>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        delete this.pendingRequests[pingId];
+        reject(new Error('Ping timed out'));
+      }, 5000); // 5 second timeout
+      
+      this.pendingRequests[pingId] = {
+        resolve: () => {
+          clearTimeout(timeout);
+          resolve(true);
+        },
+        reject,
+        type: 'pong'
+      };
+    });
+    
+    // Send the ping to Unity
+    this.unityConnection!.send(JSON.stringify({
+      type: 'ping',
+      data: {
+        pingId,
+        timestamp: Date.now()
+      }
+    }));
+    
+    // Wait for pong response
     return responsePromise;
   }
 
