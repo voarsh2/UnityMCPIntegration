@@ -278,6 +278,63 @@ namespace Plugins.GamePilot.Editor.MCP
             }
         }
         
+        public async Task SendSceneInfoAsync(string requestId, MCPSceneInfo sceneInfo)
+        {
+            if (!connectionManager.IsConnected) return;
+            
+            try
+            {
+                var message = JsonConvert.SerializeObject(new
+                {
+                    type = "sceneInfo",
+                    data = new
+                    {
+                        requestId,
+                        sceneInfo,
+                        timestamp = DateTime.UtcNow
+                    }
+                }, new JsonSerializerSettings
+                {
+                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+                });
+                
+                await connectionManager.SendMessageAsync(message);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP] Error sending scene info: {ex.Message}");
+            }
+        }
+        
+        public async Task SendGameObjectsDetailsAsync(string requestId, List<MCPGameObjectDetail> gameObjectDetails)
+        {
+            if (!connectionManager.IsConnected) return;
+            
+            try
+            {
+                var message = JsonConvert.SerializeObject(new
+                {
+                    type = "gameObjectsDetails",
+                    data = new
+                    {
+                        requestId,
+                        gameObjectDetails,
+                        count = gameObjectDetails?.Count ?? 0,
+                        timestamp = DateTime.UtcNow
+                    }
+                }, new JsonSerializerSettings
+                {
+                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+                });
+                
+                await connectionManager.SendMessageAsync(message);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP] Error sending game objects details: {ex.Message}");
+            }
+        }
+        
         private string GetGameObjectPath(GameObject obj)
         {
             if (obj == null) return string.Empty;
