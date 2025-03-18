@@ -24,7 +24,7 @@ export class WebSocketHandler {
   private lastHeartbeat: number = 0;
   private connectionEstablished: boolean = false;
   private pendingRequests: Record<string, {
-    resolve: (data: any) => void;
+    resolve: (data?: any) => void;
     reject: (reason?: any) => void;
     type: string;
   }> = {};
@@ -82,7 +82,7 @@ export class WebSocketHandler {
       // Set up ping interval to keep connection alive
       const pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
-          this.sendPing();
+          this.sendPingKeepAlive(); // Changed from sendPing to sendPingKeepAlive
         } else {
           clearInterval(pingInterval);
         }
@@ -104,7 +104,7 @@ export class WebSocketHandler {
     }
   }
   
-  private sendPing() {
+  private sendPingKeepAlive() {
     try {
       if (this.unityConnection && this.unityConnection.readyState === WebSocket.OPEN) {
         this.unityConnection.send(JSON.stringify({
@@ -145,9 +145,10 @@ export class WebSocketHandler {
         console.error('[Unity MCP] Received pong from Unity');
         
         // Check if this is a response to our ping request
-        const pingId = message.data?.pingId;
+        // Use optional chaining and type assertion for pingId
+        const pingId = message.data && 'pingId' in message.data ? message.data.pingId as string : undefined;
         if (pingId && this.pendingRequests[pingId]) {
-          this.pendingRequests[pingId].resolve();
+          this.pendingRequests[pingId].resolve(true); // Pass true to resolve
           delete this.pendingRequests[pingId];
         }
         break;
@@ -388,7 +389,7 @@ export class WebSocketHandler {
     return responsePromise;
   }
 
-  public async sendPing(): Promise<boolean> {
+  public async sendPingRequest(): Promise<boolean> {
     if (!this.isConnected()) {
       throw new Error('Unity Editor is not connected');
     }
@@ -403,7 +404,7 @@ export class WebSocketHandler {
       }, 5000); // 5 second timeout
       
       this.pendingRequests[pingId] = {
-        resolve: () => {
+        resolve: (data?: any) => {
           clearTimeout(timeout);
           resolve(true);
         },

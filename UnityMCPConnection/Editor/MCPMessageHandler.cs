@@ -104,7 +104,7 @@ namespace Plugins.GamePilot.Editor.MCP
                 await messageSender.SendEditorStateAsync(editorState);
                 
                 // disable periodic updates after handshake
-                MCPManager.EnablePeriodicUpdates(false);
+               // MCPManager.EnablePeriodicUpdates(false);
             }
             catch (Exception ex)
             {

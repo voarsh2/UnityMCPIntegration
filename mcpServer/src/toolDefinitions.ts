@@ -446,8 +446,8 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
       case 'ping': {
         try {
           const startTime = Date.now();
-          // Send ping and await response
-          const pingResult = await wsHandler.sendPing();
+          // Send ping and await response - fixed method name
+          const pingResult = await wsHandler.sendPingRequest();
           const roundTripTime = Date.now() - startTime;
           
           return {
