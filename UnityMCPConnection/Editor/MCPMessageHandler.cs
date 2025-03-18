@@ -47,10 +47,6 @@ namespace Plugins.GamePilot.Editor.MCP
                         await HandleExecuteCommandAsync(message.Data);
                         break;
                     
-                    case "ping":
-                        await HandlePingAsync(message.Data);
-                        break;
-                    
                     case "getEditorState":
                     case "requestEditorState": // Added new message type from server
                         await HandleGetEditorStateAsync(message.Data);
@@ -199,33 +195,6 @@ namespace Plugins.GamePilot.Editor.MCP
             catch (Exception ex)
             {
                 Debug.LogError($"[MCP] Error executing command: {ex.Message}");
-            }
-        }
-        
-        private async Task HandlePingAsync(JToken data)
-        {
-            try
-            {
-                // Handle the new ping message format used by our updated MCP server
-                if (data["timestamp"] != null)
-                {
-                    long timestamp = data["timestamp"].Value<long>();
-                    string pingId = data["pingId"]?.ToString() ?? Guid.NewGuid().ToString();
-                    
-                    // Send a pong response using the updated format
-                      // Use SendPingResponseAsync with the pingId
-                    await messageSender.SendPingResponseAsync(pingId);
-                    
-                    return;
-                }
-                
-                // Fallback to the original ping handling for compatibility
-                string originalPingId = data["pingId"]?.ToString() ?? Guid.NewGuid().ToString();
-                await messageSender.SendPingResponseAsync(originalPingId);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[MCP] Error handling ping: {ex.Message}");
             }
         }
         

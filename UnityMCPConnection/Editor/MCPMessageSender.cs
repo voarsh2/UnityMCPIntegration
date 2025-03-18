@@ -131,30 +131,6 @@ namespace Plugins.GamePilot.Editor.MCP
             }
         }
         
-        public async Task SendPingResponseAsync(string pingId)
-        {
-            if (!connectionManager.IsConnected) return;
-            
-            try
-            {
-                var message = JsonConvert.SerializeObject(new
-                {
-                    type = "pong",
-                    data = new
-                    {
-                        pingId,
-                        timestamp = DateTime.UtcNow
-                    }
-                });
-                
-                await connectionManager.SendMessageAsync(message);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[MCP] Error sending ping response: {ex.Message}");
-            }
-        }
-        
         public async Task SendErrorMessageAsync(string errorCode, string errorMessage)
         {
             if (!connectionManager.IsConnected) return;

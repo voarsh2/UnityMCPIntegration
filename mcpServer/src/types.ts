@@ -74,8 +74,8 @@ export interface HandshakeMessage {
   data: { message: string };
 }
 
-export interface PingMessage {
-  type: 'ping';
+export interface HeartbeatMessage {
+  type: 'heartbeat';
   data: { timestamp: number };
 }
 
@@ -114,7 +114,7 @@ export type UnityMessage =
 export type ServerMessage =
   | ExecuteEditorCommandMessage
   | HandshakeMessage
-  | PingMessage
+  | HeartbeatMessage
   | RequestEditorStateMessage
   | GetSceneInfoMessage
   | GetGameObjectsInfoMessage;

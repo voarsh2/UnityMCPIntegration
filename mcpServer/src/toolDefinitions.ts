@@ -188,22 +188,7 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
           type: 'object',
           description: 'Returns connection status information'
         }
-      },
-      {
-        name: 'ping',
-        description: 'Send a ping to Unity Editor to check for connectivity and response time',
-        category: 'Connection',
-        tags: ['unity', 'editor', 'connection'],
-        inputSchema: {
-          type: 'object',
-          properties: {},
-          additionalProperties: false
-        },
-        returns: {
-          type: 'object',
-          description: 'Returns ping status including roundtrip time'
-        }
-      },
+      }
     ],
   }));
 
@@ -439,32 +424,6 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
           throw new McpError(
             ErrorCode.InternalError,
             `Failed to find GameObjects: ${error instanceof Error ? error.message : 'Unknown error'}`
-          );
-        }
-      }
-
-      case 'ping': {
-        try {
-          const startTime = Date.now();
-          // Send ping and await response - fixed method name
-          const pingResult = await wsHandler.sendPingRequest();
-          const roundTripTime = Date.now() - startTime;
-          
-          return {
-            content: [{
-              type: 'text',
-              text: JSON.stringify({
-                success: true,
-                roundTripTimeMs: roundTripTime,
-                timestamp: new Date().toISOString(),
-                message: 'Unity Editor responded to ping'
-              }, null, 2)
-            }]
-          };
-        } catch (error) {
-          throw new McpError(
-            ErrorCode.InternalError,
-            `Ping failed: ${error instanceof Error ? error.message : 'Unknown error'}`
           );
         }
       }
