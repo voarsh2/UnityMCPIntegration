@@ -35,7 +35,7 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
       },
       {
         name: 'execute_editor_command',
-        description: 'Execute C# code within the Unity Editor',
+        description: 'Execute C# code directly in the Unity Editor - code is executed immediately in the editor context, not as a MonoBehaviour script',
         category: 'Editor Control',
         tags: ['unity', 'editor', 'command', 'c#'],
         inputSchema: {
@@ -43,7 +43,7 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
           properties: {
             code: {
               type: 'string',
-              description: 'C# code to execute in the Unity Editor context. The code has access to all UnityEditor and UnityEngine APIs.',
+              description: 'Raw C# code to execute immediately in the Unity Editor. DO NOT include namespace declarations, class definitions or Start/Update methods. Write code that executes directly like a function body. The following namespaces are automatically available: UnityEngine, UnityEditor, System, System.Linq, System.Collections, and System.Collections.Generic. The code should return a value if you want to get results back.',
               minLength: 1
             }
           },
@@ -52,7 +52,7 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
         },
         returns: {
           type: 'object',
-          description: 'Returns the execution result and execution time'
+          description: 'Returns the execution result, execution time, and status'
         }
       },
       {
