@@ -53,7 +53,7 @@ namespace Plugins.GamePilot.Editor.MCP
             
             // Load and clone the visual tree asset
             var visualTree = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(
-                "Assets/Plugins/GamePilot/UnityMCP/UnityMCPlugin/Editor/UI/MCPDebugWindow.uxml");
+                "Assets/Plugins/GamePilot/UnityMCP/UnityMCPConnection/Editor/UI/MCPDebugWindow.uxml");
             
             if (visualTree != null)
             {
@@ -68,7 +68,7 @@ namespace Plugins.GamePilot.Editor.MCP
             
             // Load USS
             var styleSheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(
-                "Assets/Plugins/GamePilot/UnityMCP/UnityMCPlugin/Editor/UI/MCPDebugWindow.uss");
+                "Assets/Plugins/GamePilot/UnityMCP/UnityMCPConnection/Editor/UI/MCPDebugWindow.uss");
             
             if (styleSheet != null)
             {
