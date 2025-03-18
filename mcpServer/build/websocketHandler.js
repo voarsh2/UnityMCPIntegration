@@ -15,6 +15,7 @@ export class WebSocketHandler {
     commandStartTime = null;
     lastHeartbeat = 0;
     connectionEstablished = false;
+    pendingRequests = {};
     constructor(port = 8080) {
         // Initialize WebSocket Server
         this.wsServer = new WebSocketServer({ port });
@@ -117,6 +118,22 @@ export class WebSocketHandler {
                 this.lastHeartbeat = Date.now();
                 this.connectionEstablished = true;
                 console.error('[Unity MCP] Received pong from Unity');
+                break;
+            case 'sceneInfo':
+                // Handle scene info response
+                const sceneRequestId = message.data?.requestId;
+                if (sceneRequestId && this.pendingRequests[sceneRequestId]) {
+                    this.pendingRequests[sceneRequestId].resolve(message.data);
+                    delete this.pendingRequests[sceneRequestId];
+                }
+                break;
+            case 'gameObjectsDetails':
+                // Handle game objects details response
+                const goRequestId = message.data?.requestId;
+                if (goRequestId && this.pendingRequests[goRequestId]) {
+                    this.pendingRequests[goRequestId].resolve(message.data);
+                    delete this.pendingRequests[goRequestId];
+                }
                 break;
             default:
                 console.error('[Unity MCP] Unknown message type:', message.type);
@@ -227,6 +244,67 @@ export class WebSocketHandler {
         catch (error) {
             console.error('[Unity MCP] Error requesting editor state:', error);
         }
+    }
+    async requestSceneInfo(detailLevel) {
+        if (!this.isConnected()) {
+            throw new Error('Unity Editor is not connected');
+        }
+        const requestId = crypto.randomUUID();
+        // Create a promise that will be resolved when we get the response
+        const responsePromise = new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                delete this.pendingRequests[requestId];
+                reject(new Error('Request for scene info timed out'));
+            }, 10000); // 10 second timeout
+            this.pendingRequests[requestId] = {
+                resolve: (data) => {
+                    clearTimeout(timeout);
+                    resolve(data.sceneInfo);
+                },
+                reject,
+                type: 'sceneInfo'
+            };
+        });
+        // Send the request to Unity
+        this.unityConnection.send(JSON.stringify({
+            type: 'getSceneInfo',
+            data: {
+                requestId,
+                detailLevel
+            }
+        }));
+        return responsePromise;
+    }
+    async requestGameObjectsInfo(instanceIDs, detailLevel) {
+        if (!this.isConnected()) {
+            throw new Error('Unity Editor is not connected');
+        }
+        const requestId = crypto.randomUUID();
+        // Create a promise that will be resolved when we get the response
+        const responsePromise = new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                delete this.pendingRequests[requestId];
+                reject(new Error('Request for GameObjects info timed out'));
+            }, 10000); // 10 second timeout
+            this.pendingRequests[requestId] = {
+                resolve: (data) => {
+                    clearTimeout(timeout);
+                    resolve(data.gameObjectDetails);
+                },
+                reject,
+                type: 'gameObjectsDetails'
+            };
+        });
+        // Send the request to Unity
+        this.unityConnection.send(JSON.stringify({
+            type: 'getGameObjectsInfo',
+            data: {
+                requestId,
+                instanceIDs,
+                detailLevel
+            }
+        }));
+        return responsePromise;
     }
     async close() {
         if (this.unityConnection) {

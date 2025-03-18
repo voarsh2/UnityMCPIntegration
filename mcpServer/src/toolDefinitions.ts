@@ -245,7 +245,7 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
     switch (name) {
       case 'get_current_scene_info': {
         try {
-          const detailLevel = args?.detailLevel || 'RootObjectsOnly';
+          const detailLevel = (args?.detailLevel as string) || 'RootObjectsOnly';
           
           // Send request to Unity and wait for response
           const sceneInfo = await wsHandler.requestSceneInfo(detailLevel);
@@ -274,7 +274,7 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
           }
           
           const instanceIDs = args.instanceIDs;
-          const detailLevel = args?.detailLevel || 'IncludeComponents';
+          const detailLevel = (args?.detailLevel as string) || 'IncludeComponents';
           
           // Send request to Unity and wait for response
           const gameObjectsInfo = await wsHandler.requestGameObjectsInfo(instanceIDs, detailLevel);
