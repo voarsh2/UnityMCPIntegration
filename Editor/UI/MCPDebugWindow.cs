@@ -14,7 +14,6 @@ namespace Plugins.GamePilot.Editor.MCP
         [SerializeField]
         private StyleSheet uss;
 
-
         [SerializeField]
         private VisualTreeAsset m_VisualTreeAsset = default;
         
@@ -22,7 +21,7 @@ namespace Plugins.GamePilot.Editor.MCP
         private Button connectButton;
         private Button disconnectButton;
         private Toggle autoReconnectToggle;
-        private TextField serverUrlField;
+        // Removed serverUrlField completely
         private TextField serverPortField;
         
         // Component logging toggles
@@ -55,8 +54,6 @@ namespace Plugins.GamePilot.Editor.MCP
         {
             VisualElement root = rootVisualElement;
             
-            
-            
             if (uxml != null)
             {
                 uxml.CloneTree(root);
@@ -79,7 +76,6 @@ namespace Plugins.GamePilot.Editor.MCP
             connectButton = root.Q<Button>("connect-button");
             disconnectButton = root.Q<Button>("disconnect-button");
             autoReconnectToggle = root.Q<Toggle>("auto-reconnect-toggle");
-            serverUrlField = root.Q<TextField>("server-url-field");
             serverPortField = root.Q<TextField>("server-port-field");
             
             lastErrorLabel = root.Q<Label>("last-error-value");
@@ -89,14 +85,8 @@ namespace Plugins.GamePilot.Editor.MCP
             messagesReceivedLabel = root.Q<Label>("messages-received-value");
             reconnectAttemptsLabel = root.Q<Label>("reconnect-attempts-value");
             
-            // Set default URL if empty
-            if (string.IsNullOrWhiteSpace(serverUrlField.value))
-            {
-                serverUrlField.value = "ws://localhost:8080";
-            }
-            
             // Set default port if empty
-            if (string.IsNullOrWhiteSpace(serverPortField.value))
+            if (serverPortField != null && string.IsNullOrWhiteSpace(serverPortField.value))
             {
                 serverPortField.value = "8080";
             }
@@ -121,10 +111,9 @@ namespace Plugins.GamePilot.Editor.MCP
             // Create a simple fallback UI if UXML fails to load
             root.Add(new Label("MCP Debug Window - UXML not found") { style = { fontSize = 16, marginBottom = 10 } });
             
-            serverUrlField = new TextField("Server URL") { value = "ws://localhost:8080" };
-            root.Add(serverUrlField);
+            // Removed serverUrlField - only using port field as requested
             
-            serverPortField = new TextField("Port Default: 8080)") { value = "8080" };
+            serverPortField = new TextField("Port (Default: 8080)") { value = "8080" };
             root.Add(serverPortField);
             
             var connectButton = new Button(OnConnectClicked) { text = "Connect" };
