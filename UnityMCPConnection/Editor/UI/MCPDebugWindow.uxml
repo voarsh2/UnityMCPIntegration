@@ -15,6 +15,11 @@
                 <ui:Label text="Not Connected" name="connection-status" class="status-label status-disconnected" style="margin-left: 10px;" />
             </ui:VisualElement>
             
+            <ui:VisualElement style="flex-direction: row; align-items: center; margin-bottom: 10px;">
+                <ui:Label text="Server URL:" class="server-url-label" />
+                <ui:TextField name="server-url-field" value="ws://localhost:8080" class="server-url-field" />
+            </ui:VisualElement>
+            
             <ui:VisualElement style="flex-direction: row; align-items: center;">
                 <ui:Button text="Connect" name="connect-button" class="control-button connect-button" />
                 <ui:Button text="Disconnect" name="disconnect-button" class="control-button disconnect-button" />
@@ -27,11 +32,6 @@
             <ui:Label text="Connection Information" class="section-header" />
             
             <ui:VisualElement class="info-grid">
-                <ui:VisualElement class="info-row">
-                    <ui:Label text="Server URL:" class="info-label" />
-                    <ui:Label text="ws://localhost:8080" name="server-url-value" class="info-value" />
-                </ui:VisualElement>
-                
                 <ui:VisualElement class="info-row">
                     <ui:Label text="Last Error:" class="info-label" />
                     <ui:Label text="None" name="last-error-value" class="info-value" />
@@ -62,29 +62,6 @@
                 <ui:VisualElement class="statistic-box">
                     <ui:Label text="Reconnect Attempts" class="statistic-label" />
                     <ui:Label text="0" name="reconnect-attempts-value" class="statistic-value" />
-                </ui:VisualElement>
-            </ui:VisualElement>
-        </ui:VisualElement>
-        
-        <!-- Component Status Section -->
-        <ui:VisualElement class="section-container">
-            <ui:Label text="Component Status" class="section-header" />
-            
-            <ui:VisualElement name="component-status-container">
-                <!-- These would be populated dynamically with component status -->
-                <ui:VisualElement class="component-status-item">
-                    <ui:Label text="MCPManager" class="component-name" />
-                    <ui:Label text="Running" class="component-status status-ok" />
-                </ui:VisualElement>
-                
-                <ui:VisualElement class="component-status-item">
-                    <ui:Label text="MCPConnectionManager" class="component-name" />
-                    <ui:Label text="Disconnected" class="component-status status-warning" />
-                </ui:VisualElement>
-                
-                <ui:VisualElement class="component-status-item">
-                    <ui:Label text="MCPDataCollector" class="component-name" />
-                    <ui:Label text="Running" class="component-status status-ok" />
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

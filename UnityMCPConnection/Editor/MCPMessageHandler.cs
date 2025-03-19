@@ -266,10 +266,10 @@ namespace Plugins.GamePilot.Editor.MCP
         // Helper to determine current render pipeline
         private string GetCurrentRenderPipeline()
         {
-            if (UnityEngine.Rendering.GraphicsSettings.renderPipelineAsset == null)
+            if (UnityEngine.Rendering.GraphicsSettings.defaultRenderPipeline == null)
                 return "Built-in Render Pipeline";
                 
-            var pipelineType = UnityEngine.Rendering.GraphicsSettings.renderPipelineAsset.GetType().Name;
+            var pipelineType = UnityEngine.Rendering.GraphicsSettings.defaultRenderPipeline.GetType().Name;
             
             // Try to make the name more user-friendly
             if (pipelineType.Contains("Universal"))
