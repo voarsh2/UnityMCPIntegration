@@ -1,4 +1,4 @@
-import { WebSocketServer, WebSocket } from 'ws';
+import WebSocket, { WebSocketServer } from 'ws';
 import { 
   UnityMessage, 
   UnityEditorState, 
@@ -7,7 +7,9 @@ import {
 } from './types.js';
 
 export class WebSocketHandler {
-  private wsServer: WebSocketServer;
+  private server: WebSocketServer;
+  private clients: Set<WebSocket>;
+  public readonly port: number;
   private unityConnection: WebSocket | null = null;
   private editorState: UnityEditorState = {
     activeGameObjects: [],
@@ -29,63 +31,109 @@ export class WebSocketHandler {
   }> = {};
 
   constructor(port: number = parseInt(process.env.MCP_WEBSOCKET_PORT || '8080')) {
-    // Initialize WebSocket Server
-    this.wsServer = new WebSocketServer({ port });
-    this.setupWebSocketServer();
+    this.port = port;
+    this.clients = new Set();
+    
+    // Create WebSocket server
+    this.server = new WebSocketServer({ port });
+    
+    // Setup event handlers
+    this.server.on('connection', this.handleConnection.bind(this));
+    this.server.on('error', this.handleError.bind(this));
+    
+    console.error(`[WebSocket] Server initialized on port ${port}`);
   }
 
-  private setupWebSocketServer() {
-    console.error(`[Unity MCP] WebSocket server starting on port ${this.wsServer.options.port}`);
+  private handleConnection(ws: WebSocket) {
+    console.error('[WebSocket] Client connected');
+    this.clients.add(ws);
     
-    this.wsServer.on('listening', () => {
-      console.error('[Unity MCP] WebSocket server is listening for connections');
+    ws.on('message', (message: Buffer) => {
+      try {
+        const messageStr = message.toString();
+        console.error(`[WebSocket] Received message: ${messageStr}`);
+        
+        // Parse message
+        const data = JSON.parse(messageStr);
+        
+        // Handle different message types here
+        this.handleMessage(data, ws);
+      } catch (err) {
+        console.error('[WebSocket] Error processing message:', err);
+      }
     });
-
-    this.wsServer.on('error', (error) => {
-      console.error('[Unity MCP] WebSocket server error:', error);
+    
+    ws.on('close', () => {
+      console.error('[WebSocket] Client disconnected');
+      this.clients.delete(ws);
     });
-
-    this.wsServer.on('connection', (ws: WebSocket) => {
-      console.error('[Unity MCP] Unity Editor connected');
-      this.unityConnection = ws;
-      this.connectionEstablished = true;
-      this.lastHeartbeat = Date.now();
-      
-      // Send a simple handshake message to verify connection
-      this.sendHandshake();
-
-      ws.on('message', (data: Buffer) => {
-        try {
-          // Update heartbeat on any message
-          this.lastHeartbeat = Date.now();
-          
-          const message = JSON.parse(data.toString()) as UnityMessage;
-          console.error('[Unity MCP] Received message type:', message.type);
-          this.handleUnityMessage(message);
-        } catch (error) {
-          console.error('[Unity MCP] Error handling message:', error);
-        }
-      });
-
-      ws.on('error', (error) => {
-        console.error('[Unity MCP] WebSocket error:', error);
-        this.connectionEstablished = false;
-      });
-
-      ws.on('close', () => {
-        console.error('[Unity MCP] Unity Editor disconnected');
-        this.unityConnection = null;
-        this.connectionEstablished = false;
-      });
-      
-      // Keep the automatic heartbeat for internal connection validation
-      const pingInterval = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          this.sendPing();
+    
+    ws.on('error', (error) => {
+      console.error('[WebSocket] Client error:', error);
+      this.clients.delete(ws);
+    });
+    
+    // Send welcome message
+    ws.send(JSON.stringify({
+      type: 'connected',
+      message: 'Connected to Unity MCP WebSocket server'
+    }));
+  }
+  
+  private handleMessage(data: any, client: WebSocket) {
+    // Handle Unity-specific messages here
+    console.error(`[WebSocket] Handling message of type: ${data.type}`);
+    
+    // Add specific message handling as needed
+  }
+  
+  private handleError(error: Error) {
+    console.error('[WebSocket] Server error:', error);
+  }
+  
+  public async sendMessage(message: string | object) {
+    const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
+    
+    const promises = Array.from(this.clients).map((client) => {
+      return new Promise<void>((resolve, reject) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(messageStr, (err) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve();
+            }
+          });
         } else {
-          clearInterval(pingInterval);
+          resolve(); // Client not ready, skip it
         }
-      }, 30000); // Send heartbeat every 30 seconds
+      });
+    });
+    
+    await Promise.all(promises);
+  }
+  
+  public async close() {
+    // Close all client connections
+    const closePromises = Array.from(this.clients).map((client) => {
+      return new Promise<void>((resolve) => {
+        client.terminate();
+        resolve();
+      });
+    });
+    
+    await Promise.all(closePromises);
+    this.clients.clear();
+    
+    // Close the server
+    return new Promise<void>((resolve, reject) => {
+      this.server.close((err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
     });
   }
 
@@ -378,19 +426,5 @@ export class WebSocketHandler {
     }));
     
     return responsePromise;
-  }
-
-  public async close(): Promise<void> {
-    if (this.unityConnection) {
-      this.unityConnection.close();
-      this.unityConnection = null;
-    }
-    
-    return new Promise<void>((resolve) => {
-      this.wsServer.close(() => {
-        console.error('[Unity MCP] WebSocket server closed');
-        resolve();
-      });
-    });
   }
 }
