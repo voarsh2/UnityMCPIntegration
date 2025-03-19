@@ -40,16 +40,19 @@ The Model Context Protocol (MCP) is a standardized protocol that connects AI mod
 
 You have several options to install the Unity package:
 
-**Option A: Import Custom Package**
+
+
+**Option A: Package Manager (Git URL)**
+1. Open the Unity Package Manager (`Window > Package Manager`)
+2. Click the `+` button and select `Add package from git URL...`
+3. Enter the repository URL: `https://github.com/shahzadgamedev/UnityMCPIntegration.git`
+4. Click `Add`
+
+**Option B: Import Custom Package**
 1. Clone this repository or download it as a zip
 2. In Unity, go to `Assets > Import Package > Custom Package`
 3. Select the `UnityMCPConnection.unitypackage` file
 
-**Option B: Package Manager (Git URL)**
-1. Open the Unity Package Manager (`Window > Package Manager`)
-2. Click the `+` button and select `Add package from git URL...`
-3. Enter the repository URL: `https://github.com/shahzadgamedev/UnityMCPIntegration.git?path=/UnityMCPConnection`
-4. Click `Add`
 
 **Option C: Manual Installation**
 1. Clone this repository
