@@ -39,7 +39,7 @@ namespace Plugins.GamePilot.Editor.MCP
         private int reconnectAttempts = 0;
         private DateTime? connectionStartTime = null;
         
-        [MenuItem("Window/GamePilot/MCP Debug")]
+        [MenuItem("Window/MCP Debug")]
         public static void ShowWindow()
         {
             MCPDebugWindow wnd = GetWindow<MCPDebugWindow>();
