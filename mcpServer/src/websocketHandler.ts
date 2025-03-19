@@ -28,14 +28,14 @@ export class WebSocketHandler {
     type: string;
   }> = {};
 
-  constructor(port: number = 8080) {
+  constructor(port: number = parseInt(process.env.MCP_WEBSOCKET_PORT || '8080')) {
     // Initialize WebSocket Server
     this.wsServer = new WebSocketServer({ port });
     this.setupWebSocketServer();
   }
 
   private setupWebSocketServer() {
-    console.error('[Unity MCP] WebSocket server starting on port 8080');
+    console.error(`[Unity MCP] WebSocket server starting on port ${this.wsServer.options.port}`);
     
     this.wsServer.on('listening', () => {
       console.error('[Unity MCP] WebSocket server is listening for connections');
