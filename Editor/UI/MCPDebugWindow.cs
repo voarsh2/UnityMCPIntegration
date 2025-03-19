@@ -245,23 +245,8 @@ namespace Plugins.GamePilot.Editor.MCP
         
         private void OnConnectClicked()
         {
-            // Get the server URL from the text field
-            string serverUrl = serverUrlField.value;
-            
-            // If URL is empty, default to localhost:8080
-            if (string.IsNullOrWhiteSpace(serverUrl))
-            {
-                serverUrl = "ws://localhost:8080";
-                serverUrlField.value = serverUrl;
-            }
-            
-            // Validate URL format
-            if (!serverUrl.StartsWith("ws://"))
-            {
-                EditorUtility.DisplayDialog("Invalid URL", 
-                    "Please enter a valid WebSocket URL starting with ws://", "OK");
-                return;
-            }
+            // Always use localhost for the WebSocket URL
+            string serverUrl = "ws://localhost";
             
             // Get the server port from the text field
             string portText = serverPortField.value;
@@ -283,7 +268,7 @@ namespace Plugins.GamePilot.Editor.MCP
             
             try {
                 // Create the WebSocket URL with the specified port
-                Uri uri = new Uri($"ws://localhost:{port}");
+                Uri uri = new Uri($"{serverUrl}:{port}");
                 
                 // If we have access to the ConnectionManager, try to update its server URI
                 var connectionManager = GetConnectionManager();
@@ -317,7 +302,7 @@ namespace Plugins.GamePilot.Editor.MCP
             catch (UriFormatException)
             {
                 EditorUtility.DisplayDialog("Invalid URL", 
-                    "The URL format is invalid. Please enter a valid WebSocket URL.", "OK");
+                    "The URL format is invalid.", "OK");
             }
             catch (Exception ex)
             {
@@ -397,7 +382,6 @@ namespace Plugins.GamePilot.Editor.MCP
             // Update button states
             connectButton.SetEnabled(!isConnected);
             disconnectButton.SetEnabled(isInitialized);
-            serverUrlField.SetEnabled(!isConnected); // Only allow URL changes when disconnected
             serverPortField.SetEnabled(!isConnected); // Only allow port changes when disconnected
             
             // Update connection time if connected
