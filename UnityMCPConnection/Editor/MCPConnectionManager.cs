@@ -11,7 +11,7 @@ namespace Plugins.GamePilot.Editor.MCP
     {
         private static readonly string ComponentName = "MCPConnectionManager";
         private ClientWebSocket webSocket;
-        private readonly Uri serverUri = new Uri("ws://localhost:8080");
+        private Uri serverUri = new Uri("ws://localhost:8080"); // Changed to allow changing
         private readonly CancellationTokenSource cts = new CancellationTokenSource();
         private bool isConnected = false;
         private float reconnectTimer = 0f;
@@ -35,7 +35,11 @@ namespace Plugins.GamePilot.Editor.MCP
         public int MessagesSent => messagesSent;
         public int MessagesReceived => messagesReceived;
         public int ReconnectAttempts => reconnectAttempts;
-        public Uri ServerUri => serverUri;
+        public Uri ServerUri 
+        { 
+            get => serverUri;
+            set => serverUri = value;
+        }
         
         public MCPConnectionManager()
         {
