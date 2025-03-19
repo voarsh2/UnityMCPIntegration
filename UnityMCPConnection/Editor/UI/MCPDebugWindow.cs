@@ -16,17 +16,15 @@ namespace Plugins.GamePilot.Editor.MCP
         private Button connectButton;
         private Button disconnectButton;
         private Toggle autoReconnectToggle;
+        private TextField serverUrlField;
+        private TextField serverPortField;
         
         // Component logging toggles
         private Dictionary<string, Toggle> logToggles = new Dictionary<string, Toggle>();
         
         // Connection info labels
-        private Label serverUrlLabel;
         private Label lastErrorLabel;
         private Label connectionTimeLabel;
-        
-        // Component status elements
-        private VisualElement componentStatusContainer;
         
         // Statistics elements
         private Label messagesSentLabel;
@@ -80,16 +78,27 @@ namespace Plugins.GamePilot.Editor.MCP
             connectButton = root.Q<Button>("connect-button");
             disconnectButton = root.Q<Button>("disconnect-button");
             autoReconnectToggle = root.Q<Toggle>("auto-reconnect-toggle");
+            serverUrlField = root.Q<TextField>("server-url-field");
+            serverPortField = root.Q<TextField>("server-port-field");
             
-            serverUrlLabel = root.Q<Label>("server-url-value");
             lastErrorLabel = root.Q<Label>("last-error-value");
             connectionTimeLabel = root.Q<Label>("connection-time-value");
-            
-            componentStatusContainer = root.Q<VisualElement>("component-status-container");
             
             messagesSentLabel = root.Q<Label>("messages-sent-value");
             messagesReceivedLabel = root.Q<Label>("messages-received-value");
             reconnectAttemptsLabel = root.Q<Label>("reconnect-attempts-value");
+            
+            // Set default URL if empty
+            if (string.IsNullOrWhiteSpace(serverUrlField.value))
+            {
+                serverUrlField.value = "ws://localhost:8080";
+            }
+            
+            // Set default port if empty
+            if (string.IsNullOrWhiteSpace(serverPortField.value))
+            {
+                serverPortField.value = "8080";
+            }
             
             // Setup UI events
             connectButton.clicked += OnConnectClicked;
@@ -110,6 +119,12 @@ namespace Plugins.GamePilot.Editor.MCP
         {
             // Create a simple fallback UI if UXML fails to load
             root.Add(new Label("MCP Debug Window - UXML not found") { style = { fontSize = 16, marginBottom = 10 } });
+            
+            serverUrlField = new TextField("Server URL") { value = "ws://localhost:8080" };
+            root.Add(serverUrlField);
+            
+            serverPortField = new TextField("Port Default: 8080)") { value = "8080" };
+            root.Add(serverPortField);
             
             var connectButton = new Button(OnConnectClicked) { text = "Connect" };
             root.Add(connectButton);
@@ -229,18 +244,84 @@ namespace Plugins.GamePilot.Editor.MCP
         
         private void OnConnectClicked()
         {
-            // Initiate manual connection
-            if (MCPManager.IsInitialized)
+            // Get the server URL from the text field
+            string serverUrl = serverUrlField.value;
+            
+            // If URL is empty, default to localhost:8080
+            if (string.IsNullOrWhiteSpace(serverUrl))
             {
-                MCPManager.RetryConnection();
-                connectionStartTime = DateTime.Now;
-                UpdateUIFromState();
+                serverUrl = "ws://localhost:8080";
+                serverUrlField.value = serverUrl;
             }
-            else
+            
+            // Validate URL format
+            if (!serverUrl.StartsWith("ws://"))
             {
-                MCPManager.Initialize();
-                connectionStartTime = DateTime.Now;
-                UpdateUIFromState();
+                EditorUtility.DisplayDialog("Invalid URL", 
+                    "Please enter a valid WebSocket URL starting with ws://", "OK");
+                return;
+            }
+            
+            // Get the server port from the text field
+            string portText = serverPortField.value;
+            
+            // If port is empty, default to 8080
+            if (string.IsNullOrWhiteSpace(portText))
+            {
+                portText = "8080";
+                serverPortField.value = portText;
+            }
+            
+            // Validate port format
+            if (!int.TryParse(portText, out int port) || port < 1 || port > 65535)
+            {
+                EditorUtility.DisplayDialog("Invalid Port", 
+                    "Please enter a valid port number between 1 and 65535.", "OK");
+                return;
+            }
+            
+            try {
+                // Create the WebSocket URL with the specified port
+                Uri uri = new Uri($"ws://localhost:{port}");
+                
+                // If we have access to the ConnectionManager, try to update its server URI
+                var connectionManager = GetConnectionManager();
+                if (connectionManager != null)
+                {
+                    // Use reflection to set the serverUri field if it exists
+                    var serverUriField = typeof(MCPConnectionManager).GetField("serverUri", 
+                        System.Reflection.BindingFlags.NonPublic | 
+                        System.Reflection.BindingFlags.Instance);
+                        
+                    if (serverUriField != null)
+                    {
+                        serverUriField.SetValue(connectionManager, uri);
+                    }
+                }
+                
+                // Initiate manual connection
+                if (MCPManager.IsInitialized)
+                {
+                    MCPManager.RetryConnection();
+                    connectionStartTime = DateTime.Now;
+                    UpdateUIFromState();
+                }
+                else
+                {
+                    MCPManager.Initialize();
+                    connectionStartTime = DateTime.Now;
+                    UpdateUIFromState();
+                }
+            }
+            catch (UriFormatException)
+            {
+                EditorUtility.DisplayDialog("Invalid URL", 
+                    "The URL format is invalid. Please enter a valid WebSocket URL.", "OK");
+            }
+            catch (Exception ex)
+            {
+                EditorUtility.DisplayDialog("Connection Error", 
+                    $"Error connecting to server: {ex.Message}", "OK");
             }
         }
         
@@ -315,6 +396,8 @@ namespace Plugins.GamePilot.Editor.MCP
             // Update button states
             connectButton.SetEnabled(!isConnected);
             disconnectButton.SetEnabled(isInitialized);
+            serverUrlField.SetEnabled(!isConnected); // Only allow URL changes when disconnected
+            serverPortField.SetEnabled(!isConnected); // Only allow port changes when disconnected
             
             // Update connection time if connected
             if (connectionStartTime.HasValue && isConnected)
@@ -327,35 +410,25 @@ namespace Plugins.GamePilot.Editor.MCP
                 connectionTimeLabel.text = "00:00:00";
             }
             
-            // Update server URL - get actual URL from connection manager if possible
-            var connectionManager = GetConnectionManager();
-            if (connectionManager != null)
-            {
-                // Try to get the actual server URL from the connection manager
-                serverUrlLabel.text = connectionManager.ServerUri?.ToString() ?? "ws://localhost:8080";
-            }
-            else
-            {
-                serverUrlLabel.text = "ws://localhost:8080";
-            }
-            
             // Update statistics if available
             if (isInitialized)
             {
-                // Get connection statistics - using the connection manager variable we already retrieved
+                // Get connection statistics
+                var connectionManager = GetConnectionManager();
                 if (connectionManager != null)
                 {
                     messagesSentLabel.text = connectionManager.MessagesSent.ToString();
                     messagesReceivedLabel.text = connectionManager.MessagesReceived.ToString();
                     reconnectAttemptsLabel.text = connectionManager.ReconnectAttempts.ToString();
-                    lastErrorLabel.text = connectionManager.LastErrorMessage;
+                    lastErrorLabel.text = !string.IsNullOrEmpty(connectionManager.LastErrorMessage) 
+                        ? connectionManager.LastErrorMessage : "None";
                 }
                 else
                 {
                     messagesSentLabel.text = "0";
                     messagesReceivedLabel.text = "0";
                     reconnectAttemptsLabel.text = "0";
-                    lastErrorLabel.text = string.Empty;
+                    lastErrorLabel.text = "None";
                 }
             }
         }
@@ -387,24 +460,10 @@ namespace Plugins.GamePilot.Editor.MCP
             return null;
         }
         
-        // Register for MCP events to get real-time statistics
-        private void RegisterMCPCallbacks()
-        {
-            // Example - in reality you would wire these up to your actual MCP events
-            /*
-            MCPManager.OnMessageSent += () => messagesSent++;
-            MCPManager.OnMessageReceived += () => messagesReceived++;
-            MCPManager.OnReconnectAttempt += () => reconnectAttempts++;
-            */
-        }
-        
         private void OnDisable()
         {
             // Unregister from editor updates
             EditorApplication.update -= OnEditorUpdate;
-            
-            // Unregister from MCP callbacks if needed
-            // MCPManager.UnregisterCallbacks();
         }
     }
 }

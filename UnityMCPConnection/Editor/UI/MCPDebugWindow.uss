@@ -146,32 +146,12 @@
     color: rgb(68, 138, 255);
 }
 
-.component-status-item {
-    flex-direction: row;
-    justify-content: space-between;
-    padding: 5px;
-    margin: 3px 0;
-    border-radius: 3px;
-    background-color: rgb(50, 50, 50);
-}
-
-.component-name {
+.server-url-label {
     -unity-font-style: bold;
-}
-
-.component-status {
     width: 80px;
-    -unity-text-align: upper-right;
 }
 
-.status-ok {
-    color: rgb(100, 200, 100);
-}
-
-.status-warning {
-    color: rgb(200, 200, 100);
-}
-
-.status-error {
-    color: rgb(200, 100, 100);
+.server-url-field {
+    flex-grow: 1;
+    margin-left: 10px;
 }
