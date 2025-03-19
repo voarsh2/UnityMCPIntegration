@@ -60,7 +60,7 @@ You have two options to run the MCP server:
 
 **Option A: Run the server directly**
 
-1. Navigate to the `mcpServer` directory
+1. Navigate to the `mcpServer (likely <path-to-project>\Library\PackageCache\com.quaza.unitymcp@d2b8f1260bca\mcpServer\)` directory
 2. Install dependencies:
    ```
    npm install
