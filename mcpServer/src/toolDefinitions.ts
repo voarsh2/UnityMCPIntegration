@@ -12,26 +12,57 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
       {
-        name: 'get_editor_state',
-        description: 'Retrieve the current state of the Unity Editor, including active GameObjects, scene hierarchy, and project structure',
+        name: 'get_current_scene_info',
+        description: 'Retrieve information about the current scene in Unity Editor with configurable detail level',
         category: 'Editor State',
-        tags: ['unity', 'editor', 'state'],
+        tags: ['unity', 'editor', 'scene'],
         inputSchema: {
           type: 'object',
           properties: {
-            format: {
+            detailLevel: {
               type: 'string',
-              enum: ['Raw', 'scripts_only', 'no_scripts'],
-              description: 'Specify the output format',
-              default: 'Raw'
+              enum: ['RootObjectsOnly', 'FullHierarchy'],
+              description: 'RootObjectsOnly: Returns just root GameObjects. FullHierarchy: Returns complete hierarchy with all children.',
+              default: 'RootObjectsOnly'
             }
           },
           additionalProperties: false
         },
         returns: {
           type: 'object',
-          description: 'Returns a JSON object containing the editor state information'
+          description: 'Returns information about the current scene and its hierarchy based on requested detail level'
+        }
+      },
+      {
+        name: 'get_game_objects_info',
+        description: 'Retrieve detailed information about specific GameObjects in the current scene',
+        category: 'Editor State',
+        tags: ['unity', 'editor', 'gameobjects'],
+        inputSchema: {
+          type: 'object',
+          properties: {
+            instanceIDs: {
+              type: 'array',
+              items: {
+                type: 'number'
+              },
+              description: 'Array of GameObject instance IDs to get information for',
+              minItems: 1
+            },
+            detailLevel: {
+              type: 'string',
+              enum: ['BasicInfo', 'IncludeComponents', 'IncludeChildren', 'IncludeComponentsAndChildren'],
+              description: 'BasicInfo: Basic GameObject information. IncludeComponents: Includes component details. IncludeChildren: Includes child GameObjects. IncludeComponentsAndChildren: Includes both components and a full hierarchy with components on children.',
+              default: 'IncludeComponents'
+            }
+          },
+          required: ['instanceIDs'],
+          additionalProperties: false
         },
+        returns: {
+          type: 'object',
+          description: 'Returns detailed information about the requested GameObjects'
+        }
       },
       {
         name: 'execute_editor_command',
@@ -212,45 +243,52 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
     }
 
     switch (name) {
-      case 'get_editor_state': {
+      case 'get_current_scene_info': {
         try {
-          const format = args?.format as string || 'Raw';
-          const editorState = wsHandler.getEditorState();
-          let responseData: any;
-
-          switch (format) {
-            case 'Raw':
-              responseData = editorState;
-              break;
-            case 'scripts_only':
-              responseData = editorState.projectStructure.scripts || [];
-              break;
-            case 'no_scripts': {
-              const { projectStructure, ...stateWithoutScripts } = {...editorState};
-              const { scripts, ...otherStructure } = {...projectStructure};
-              responseData = {
-                ...stateWithoutScripts,
-                projectStructure: otherStructure
-              };
-              break;
-            }
-            default:
-              throw new McpError(
-                ErrorCode.InvalidParams,
-                `Invalid format: ${format}. Valid formats are: Raw, scripts_only, no_scripts`
-              );
-          }
-
+          const detailLevel = (args?.detailLevel as string) || 'RootObjectsOnly';
+          
+          // Send request to Unity and wait for response
+          const sceneInfo = await wsHandler.requestSceneInfo(detailLevel);
+          
           return {
             content: [{
               type: 'text',
-              text: JSON.stringify(responseData, null, 2)
+              text: JSON.stringify(sceneInfo, null, 2)
             }]
           };
         } catch (error) {
           throw new McpError(
             ErrorCode.InternalError,
-            `Failed to process editor state: ${error instanceof Error ? error.message : 'Unknown error'}`
+            `Failed to get scene info: ${error instanceof Error ? error.message : 'Unknown error'}`
+          );
+        }
+      }
+      
+      case 'get_game_objects_info': {
+        try {
+          if (!args?.instanceIDs || !Array.isArray(args.instanceIDs)) {
+            throw new McpError(
+              ErrorCode.InvalidParams,
+              'instanceIDs array is required'
+            );
+          }
+          
+          const instanceIDs = args.instanceIDs;
+          const detailLevel = (args?.detailLevel as string) || 'IncludeComponents';
+          
+          // Send request to Unity and wait for response
+          const gameObjectsInfo = await wsHandler.requestGameObjectsInfo(instanceIDs, detailLevel);
+          
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify(gameObjectsInfo, null, 2)
+            }]
+          };
+        } catch (error) {
+          throw new McpError(
+            ErrorCode.InternalError,
+            `Failed to get GameObject info: ${error instanceof Error ? error.message : 'Unknown error'}`
           );
         }
       }

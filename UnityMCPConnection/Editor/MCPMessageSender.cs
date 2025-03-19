@@ -131,30 +131,6 @@ namespace Plugins.GamePilot.Editor.MCP
             }
         }
         
-        public async Task SendPingResponseAsync(string pingId)
-        {
-            if (!connectionManager.IsConnected) return;
-            
-            try
-            {
-                var message = JsonConvert.SerializeObject(new
-                {
-                    type = "pong",
-                    data = new
-                    {
-                        pingId,
-                        timestamp = DateTime.UtcNow
-                    }
-                });
-                
-                await connectionManager.SendMessageAsync(message);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[MCP] Error sending ping response: {ex.Message}");
-            }
-        }
-        
         public async Task SendErrorMessageAsync(string errorCode, string errorMessage)
         {
             if (!connectionManager.IsConnected) return;
@@ -275,6 +251,63 @@ namespace Plugins.GamePilot.Editor.MCP
             catch (Exception ex)
             {
                 Debug.LogError($"[MCP] Error sending GameObject details: {ex.Message}");
+            }
+        }
+        
+        public async Task SendSceneInfoAsync(string requestId, MCPSceneInfo sceneInfo)
+        {
+            if (!connectionManager.IsConnected) return;
+            
+            try
+            {
+                var message = JsonConvert.SerializeObject(new
+                {
+                    type = "sceneInfo",
+                    data = new
+                    {
+                        requestId,
+                        sceneInfo,
+                        timestamp = DateTime.UtcNow
+                    }
+                }, new JsonSerializerSettings
+                {
+                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+                });
+                
+                await connectionManager.SendMessageAsync(message);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP] Error sending scene info: {ex.Message}");
+            }
+        }
+        
+        public async Task SendGameObjectsDetailsAsync(string requestId, List<MCPGameObjectDetail> gameObjectDetails)
+        {
+            if (!connectionManager.IsConnected) return;
+            
+            try
+            {
+                var message = JsonConvert.SerializeObject(new
+                {
+                    type = "gameObjectsDetails",
+                    data = new
+                    {
+                        requestId,
+                        gameObjectDetails,
+                        count = gameObjectDetails?.Count ?? 0,
+                        timestamp = DateTime.UtcNow
+                    }
+                }, new JsonSerializerSettings
+                {
+                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+                });
+                
+                await connectionManager.SendMessageAsync(message);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP] Error sending game objects details: {ex.Message}");
             }
         }
         

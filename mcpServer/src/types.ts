@@ -19,6 +19,27 @@ export interface LogEntry {
   timestamp: string;
 }
 
+// Scene info from Unity
+export interface SceneInfoMessage {
+  type: 'sceneInfo';
+  data: {
+    requestId: string;
+    sceneInfo: any;
+    timestamp: string;
+  };
+}
+
+// Game objects details from Unity
+export interface GameObjectsDetailsMessage {
+  type: 'gameObjectsDetails';
+  data: {
+    requestId: string;
+    gameObjectDetails: any[];
+    count: number;
+    timestamp: string;
+  };
+}
+
 // Message types from Unity to Server
 export interface EditorStateMessage {
   type: 'editorState';
@@ -53,8 +74,8 @@ export interface HandshakeMessage {
   data: { message: string };
 }
 
-export interface PingMessage {
-  type: 'ping';
+export interface HeartbeatMessage {
+  type: 'heartbeat';
   data: { timestamp: number };
 }
 
@@ -63,19 +84,40 @@ export interface RequestEditorStateMessage {
   data: Record<string, never>;
 }
 
+export interface GetSceneInfoMessage {
+  type: 'getSceneInfo';
+  data: {
+    requestId: string;
+    detailLevel: string;
+  };
+}
+
+export interface GetGameObjectsInfoMessage {
+  type: 'getGameObjectsInfo';
+  data: {
+    requestId: string;
+    instanceIDs: number[];
+    detailLevel: string;
+  };
+}
+
 // Union type for all Unity messages
 export type UnityMessage = 
   | EditorStateMessage 
   | CommandResultMessage 
   | LogMessage
-  | PongMessage;
+  | PongMessage
+  | SceneInfoMessage
+  | GameObjectsDetailsMessage;
 
 // Union type for all Server messages
 export type ServerMessage =
   | ExecuteEditorCommandMessage
   | HandshakeMessage
-  | PingMessage
-  | RequestEditorStateMessage;
+  | HeartbeatMessage
+  | RequestEditorStateMessage
+  | GetSceneInfoMessage
+  | GetGameObjectsInfoMessage;
 
 // Command result handling
 export interface CommandPromise {

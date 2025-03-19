@@ -50,7 +50,7 @@ namespace Plugins.GamePilot.Editor.MCP
                 // Start connection
                 connectionManager.Connect();
                 
-                // Register update for connection checking only, NOT periodic updates
+                // Register update for connection checking only
                 EditorApplication.update += Update;
                 
                 isInitialized = true;
@@ -68,12 +68,6 @@ namespace Plugins.GamePilot.Editor.MCP
             try
             {
                 MCPLogger.Log(ComponentName, "Connected to MCP server");
-                
-                // Send client info to server
-                messageSender.SendClientInfoAsync().ConfigureAwait(false);
-                
-                // Don't automatically start sending periodic updates
-                // EditorApplication.update += SendPeriodicUpdates; <-- REMOVE THIS LINE
             }
             catch (Exception ex)
             {
@@ -86,9 +80,6 @@ namespace Plugins.GamePilot.Editor.MCP
             try
             {
                 MCPLogger.Log(ComponentName, "Disconnected from MCP server");
-                
-                // Stop sending periodic updates if they were started manually
-                EditorApplication.update -= SendPeriodicUpdates;
             }
             catch (Exception ex)
             {
@@ -101,9 +92,6 @@ namespace Plugins.GamePilot.Editor.MCP
             MCPLogger.LogError(ComponentName, $"Connection error: {errorMessage}");
         }
         
-        private static float updateTimer = 0f;
-        private static readonly float updateInterval = 1f; // Send updates every 1 second
-        
         private static void Update()
         {
             try
@@ -112,30 +100,6 @@ namespace Plugins.GamePilot.Editor.MCP
                 if (autoReconnect)
                 {
                     connectionManager?.CheckConnection();
-                }
-                // No other periodic tasks should be here
-            }
-            catch (Exception ex)
-            {
-                MCPLogger.LogException(ComponentName, ex);
-            }
-        }
-        
-        // Keep this method but don't register it automatically
-        // This will be called only when the server explicitly requests updates
-        private static void SendPeriodicUpdates()
-        {
-            try
-            {
-                updateTimer += Time.deltaTime;
-                
-                if (updateTimer >= updateInterval)
-                {
-                    // Collect and send editor state
-                    var editorState = dataCollector.GetEditorState();
-                    messageSender.SendEditorStateAsync(editorState).ConfigureAwait(false);
-                    
-                    updateTimer = 0f;
                 }
             }
             catch (Exception ex)
@@ -168,7 +132,6 @@ namespace Plugins.GamePilot.Editor.MCP
                 
                 // Unregister update callbacks
                 EditorApplication.update -= Update;
-                EditorApplication.update -= SendPeriodicUpdates;
                 
                 // Disconnect
                 connectionManager?.Disconnect();
@@ -182,23 +145,6 @@ namespace Plugins.GamePilot.Editor.MCP
             catch (Exception ex)
             {
                 MCPLogger.LogException(ComponentName, ex);
-            }
-        }
-
-        // Add a public method to manually start/stop editor state updates
-        public static void EnablePeriodicUpdates(bool enable)
-        {
-            if (enable)
-            {
-                // Start sending periodic updates
-                EditorApplication.update += SendPeriodicUpdates;
-                MCPLogger.Log(ComponentName, "Periodic updates enabled");
-            }
-            else
-            {
-                // Stop sending periodic updates
-                EditorApplication.update -= SendPeriodicUpdates;
-                MCPLogger.Log(ComponentName, "Periodic updates disabled");
             }
         }
     }

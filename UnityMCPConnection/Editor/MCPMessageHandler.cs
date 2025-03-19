@@ -6,6 +6,7 @@ using UnityEditor;
 using UnityEngine;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using System.Linq;
 
 namespace Plugins.GamePilot.Editor.MCP
 {
@@ -46,10 +47,6 @@ namespace Plugins.GamePilot.Editor.MCP
                         await HandleExecuteCommandAsync(message.Data);
                         break;
                     
-                    case "ping":
-                        await HandlePingAsync(message.Data);
-                        break;
-                    
                     case "getEditorState":
                     case "requestEditorState": // Added new message type from server
                         await HandleGetEditorStateAsync(message.Data);
@@ -69,6 +66,14 @@ namespace Plugins.GamePilot.Editor.MCP
                         
                     case "handshake": // Added to handle server handshake message
                         await HandleHandshakeAsync(message.Data);
+                        break;
+                        
+                    case "getSceneInfo":
+                        await HandleGetSceneInfoAsync(message.Data);
+                        break;
+                        
+                    case "getGameObjectsInfo":
+                        await HandleGetGameObjectsInfoAsync(message.Data);
                         break;
                         
                     default:
@@ -95,7 +100,7 @@ namespace Plugins.GamePilot.Editor.MCP
                 await messageSender.SendEditorStateAsync(editorState);
                 
                 // disable periodic updates after handshake
-                MCPManager.EnablePeriodicUpdates(false);
+               // MCPManager.EnablePeriodicUpdates(false);
             }
             catch (Exception ex)
             {
@@ -190,33 +195,6 @@ namespace Plugins.GamePilot.Editor.MCP
             catch (Exception ex)
             {
                 Debug.LogError($"[MCP] Error executing command: {ex.Message}");
-            }
-        }
-        
-        private async Task HandlePingAsync(JToken data)
-        {
-            try
-            {
-                // Handle the new ping message format used by our updated MCP server
-                if (data["timestamp"] != null)
-                {
-                    long timestamp = data["timestamp"].Value<long>();
-                    string pingId = data["pingId"]?.ToString() ?? Guid.NewGuid().ToString();
-                    
-                    // Send a pong response using the updated format
-                      // Use SendPingResponseAsync with the pingId
-                    await messageSender.SendPingResponseAsync(pingId);
-                    
-                    return;
-                }
-                
-                // Fallback to the original ping handling for compatibility
-                string originalPingId = data["pingId"]?.ToString() ?? Guid.NewGuid().ToString();
-                await messageSender.SendPingResponseAsync(originalPingId);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[MCP] Error handling ping: {ex.Message}");
             }
         }
         
@@ -334,6 +312,72 @@ namespace Plugins.GamePilot.Editor.MCP
             catch (Exception ex)
             {
                 Debug.LogError($"[MCP] Error getting GameObject details: {ex.Message}");
+            }
+        }
+        
+        private async Task HandleGetSceneInfoAsync(JToken data)
+        {
+            try
+            {
+                string requestId = data["requestId"]?.ToString() ?? Guid.NewGuid().ToString();
+                string detailLevelStr = data["detailLevel"]?.ToString() ?? "RootObjectsOnly";
+                
+                // Parse the detail level
+                SceneInfoDetail detailLevel;
+                if (!Enum.TryParse(detailLevelStr, true, out detailLevel))
+                {
+                    detailLevel = SceneInfoDetail.RootObjectsOnly;
+                }
+                
+                // Get scene info
+                var sceneInfo = dataCollector.GetCurrentSceneInfo(detailLevel);
+                
+                // Send it to the server
+                await messageSender.SendSceneInfoAsync(requestId, sceneInfo);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP] Error handling getSceneInfo: {ex.Message}");
+                await messageSender.SendErrorMessageAsync("SCENE_INFO_ERROR", ex.Message);
+            }
+        }
+        
+        private async Task HandleGetGameObjectsInfoAsync(JToken data)
+        {
+            try
+            {
+                string requestId = data["requestId"]?.ToString() ?? Guid.NewGuid().ToString();
+                string detailLevelStr = data["detailLevel"]?.ToString() ?? "BasicInfo";
+                
+                // Get the list of instance IDs
+                int[] instanceIDs;
+                if (data["instanceIDs"] != null && data["instanceIDs"].Type == JTokenType.Array)
+                {
+                    instanceIDs = data["instanceIDs"].ToObject<int[]>();
+                }
+                else
+                {
+                    await messageSender.SendErrorMessageAsync("INVALID_PARAMS", "instanceIDs array is required");
+                    return;
+                }
+                
+                // Parse the detail level
+                GameObjectInfoDetail detailLevel;
+                if (!Enum.TryParse(detailLevelStr, true, out detailLevel))
+                {
+                    detailLevel = GameObjectInfoDetail.BasicInfo;
+                }
+                
+                // Get game object details
+                var gameObjectDetails = dataCollector.GetGameObjectsInfo(instanceIDs, detailLevel);
+                
+                // Send to server
+                await messageSender.SendGameObjectsDetailsAsync(requestId, gameObjectDetails);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP] Error handling getGameObjectsInfo: {ex.Message}");
+                await messageSender.SendErrorMessageAsync("GAME_OBJECT_INFO_ERROR", ex.Message);
             }
         }
     }

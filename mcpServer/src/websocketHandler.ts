@@ -23,6 +23,11 @@ export class WebSocketHandler {
   private commandStartTime: number | null = null;
   private lastHeartbeat: number = 0;
   private connectionEstablished: boolean = false;
+  private pendingRequests: Record<string, {
+    resolve: (data?: any) => void;
+    reject: (reason?: any) => void;
+    type: string;
+  }> = {};
 
   constructor(port: number = 8080) {
     // Initialize WebSocket Server
@@ -74,14 +79,14 @@ export class WebSocketHandler {
         this.connectionEstablished = false;
       });
       
-      // Set up ping interval to keep connection alive
+      // Keep the automatic heartbeat for internal connection validation
       const pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
-          this.sendPing();
+          this.sendHeartbeat();
         } else {
           clearInterval(pingInterval);
         }
-      }, 30000); // Send ping every 30 seconds
+      }, 30000); // Send heartbeat every 30 seconds
     });
   }
 
@@ -99,17 +104,18 @@ export class WebSocketHandler {
     }
   }
   
-  private sendPing() {
+  // Rename from sendPingKeepAlive to sendHeartbeat and modify to make it clear 
+  // this is just for internal connection health checks
+  private sendHeartbeat() {
     try {
       if (this.unityConnection && this.unityConnection.readyState === WebSocket.OPEN) {
         this.unityConnection.send(JSON.stringify({
-          type: 'ping',
+          type: "heartbeat",
           data: { timestamp: Date.now() }
         }));
-        console.error('[Unity MCP] Sent ping');
       }
     } catch (error) {
-      console.error('[Unity MCP] Error sending ping:', error);
+      console.error('[Unity MCP] Error sending heartbeat:', error);
       this.connectionEstablished = false;
     }
   }
@@ -134,10 +140,27 @@ export class WebSocketHandler {
         break;
         
       case 'pong':
-        // Update heartbeat on pong
+        // Update heartbeat reception timestamp when receiving pong
         this.lastHeartbeat = Date.now();
         this.connectionEstablished = true;
-        console.error('[Unity MCP] Received pong from Unity');
+        break;
+
+      case 'sceneInfo':
+        // Handle scene info response
+        const sceneRequestId = message.data?.requestId;
+        if (sceneRequestId && this.pendingRequests[sceneRequestId]) {
+          this.pendingRequests[sceneRequestId].resolve(message.data);
+          delete this.pendingRequests[sceneRequestId];
+        }
+        break;
+      
+      case 'gameObjectsDetails':
+        // Handle game objects details response
+        const goRequestId = message.data?.requestId;
+        if (goRequestId && this.pendingRequests[goRequestId]) {
+          this.pendingRequests[goRequestId].resolve(message.data);
+          delete this.pendingRequests[goRequestId];
+        }
         break;
       
       default:
@@ -283,6 +306,79 @@ export class WebSocketHandler {
     } catch (error) {
       console.error('[Unity MCP] Error requesting editor state:', error);
     }
+  }
+
+  public async requestSceneInfo(detailLevel: string): Promise<any> {
+    if (!this.isConnected()) {
+      throw new Error('Unity Editor is not connected');
+    }
+    
+    const requestId = crypto.randomUUID();
+    
+    // Create a promise that will be resolved when we get the response
+    const responsePromise = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        delete this.pendingRequests[requestId];
+        reject(new Error('Request for scene info timed out'));
+      }, 10000); // 10 second timeout
+      
+      this.pendingRequests[requestId] = {
+        resolve: (data) => {
+          clearTimeout(timeout);
+          resolve(data.sceneInfo);
+        },
+        reject,
+        type: 'sceneInfo'
+      };
+    });
+    
+    // Send the request to Unity
+    this.unityConnection!.send(JSON.stringify({
+      type: 'getSceneInfo',
+      data: {
+        requestId,
+        detailLevel
+      }
+    }));
+    
+    return responsePromise;
+  }
+  
+  public async requestGameObjectsInfo(instanceIDs: number[], detailLevel: string): Promise<any> {
+    if (!this.isConnected()) {
+      throw new Error('Unity Editor is not connected');
+    }
+    
+    const requestId = crypto.randomUUID();
+    
+    // Create a promise that will be resolved when we get the response
+    const responsePromise = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        delete this.pendingRequests[requestId];
+        reject(new Error('Request for GameObjects info timed out'));
+      }, 10000); // 10 second timeout
+      
+      this.pendingRequests[requestId] = {
+        resolve: (data) => {
+          clearTimeout(timeout);
+          resolve(data.gameObjectDetails);
+        },
+        reject,
+        type: 'gameObjectsDetails'
+      };
+    });
+    
+    // Send the request to Unity
+    this.unityConnection!.send(JSON.stringify({
+      type: 'getGameObjectsInfo',
+      data: {
+        requestId,
+        instanceIDs,
+        detailLevel
+      }
+    }));
+    
+    return responsePromise;
   }
 
   public async close(): Promise<void> {

@@ -5,30 +5,61 @@ export function registerTools(server, wsHandler) {
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
         tools: [
             {
-                name: 'get_editor_state',
-                description: 'Retrieve the current state of the Unity Editor, including active GameObjects, scene hierarchy, and project structure',
+                name: 'get_current_scene_info',
+                description: 'Retrieve information about the current scene in Unity Editor with configurable detail level',
                 category: 'Editor State',
-                tags: ['unity', 'editor', 'state'],
+                tags: ['unity', 'editor', 'scene'],
                 inputSchema: {
                     type: 'object',
                     properties: {
-                        format: {
+                        detailLevel: {
                             type: 'string',
-                            enum: ['Raw', 'scripts_only', 'no_scripts'],
-                            description: 'Specify the output format',
-                            default: 'Raw'
+                            enum: ['RootObjectsOnly', 'FullHierarchy'],
+                            description: 'RootObjectsOnly: Returns just root GameObjects. FullHierarchy: Returns complete hierarchy with all children.',
+                            default: 'RootObjectsOnly'
                         }
                     },
                     additionalProperties: false
                 },
                 returns: {
                     type: 'object',
-                    description: 'Returns a JSON object containing the editor state information'
+                    description: 'Returns information about the current scene and its hierarchy based on requested detail level'
+                }
+            },
+            {
+                name: 'get_game_objects_info',
+                description: 'Retrieve detailed information about specific GameObjects in the current scene',
+                category: 'Editor State',
+                tags: ['unity', 'editor', 'gameobjects'],
+                inputSchema: {
+                    type: 'object',
+                    properties: {
+                        instanceIDs: {
+                            type: 'array',
+                            items: {
+                                type: 'number'
+                            },
+                            description: 'Array of GameObject instance IDs to get information for',
+                            minItems: 1
+                        },
+                        detailLevel: {
+                            type: 'string',
+                            enum: ['BasicInfo', 'IncludeComponents', 'IncludeChildren', 'IncludeComponentsAndChildren'],
+                            description: 'BasicInfo: Basic GameObject information. IncludeComponents: Includes component details. IncludeChildren: Includes child GameObjects. IncludeComponentsAndChildren: Includes both components and a full hierarchy with components on children.',
+                            default: 'IncludeComponents'
+                        }
+                    },
+                    required: ['instanceIDs'],
+                    additionalProperties: false
                 },
+                returns: {
+                    type: 'object',
+                    description: 'Returns detailed information about the requested GameObjects'
+                }
             },
             {
                 name: 'execute_editor_command',
-                description: 'Execute C# code within the Unity Editor',
+                description: 'Execute C# code directly in the Unity Editor - code is executed immediately in the editor context, not as a MonoBehaviour script',
                 category: 'Editor Control',
                 tags: ['unity', 'editor', 'command', 'c#'],
                 inputSchema: {
@@ -36,7 +67,7 @@ export function registerTools(server, wsHandler) {
                     properties: {
                         code: {
                             type: 'string',
-                            description: 'C# code to execute in the Unity Editor context. The code has access to all UnityEditor and UnityEngine APIs.',
+                            description: 'Raw C# code to execute immediately in the Unity Editor. DO NOT include namespace declarations, class definitions or Start/Update methods. Write code that executes directly like a function body. The following namespaces are automatically available: UnityEngine, UnityEditor, System, System.Linq, System.Collections, and System.Collections.Generic. The code should return a value if you want to get results back.',
                             minLength: 1
                         }
                     },
@@ -45,7 +76,7 @@ export function registerTools(server, wsHandler) {
                 },
                 returns: {
                     type: 'object',
-                    description: 'Returns the execution result and execution time'
+                    description: 'Returns the execution result, execution time, and status'
                 }
             },
             {
@@ -197,39 +228,40 @@ export function registerTools(server, wsHandler) {
                 'and ensure the Unity Editor is running with the MCP plugin and that the WebSocket connection is established.');
         }
         switch (name) {
-            case 'get_editor_state': {
+            case 'get_current_scene_info': {
                 try {
-                    const format = args?.format || 'Raw';
-                    const editorState = wsHandler.getEditorState();
-                    let responseData;
-                    switch (format) {
-                        case 'Raw':
-                            responseData = editorState;
-                            break;
-                        case 'scripts_only':
-                            responseData = editorState.projectStructure.scripts || [];
-                            break;
-                        case 'no_scripts': {
-                            const { projectStructure, ...stateWithoutScripts } = { ...editorState };
-                            const { scripts, ...otherStructure } = { ...projectStructure };
-                            responseData = {
-                                ...stateWithoutScripts,
-                                projectStructure: otherStructure
-                            };
-                            break;
-                        }
-                        default:
-                            throw new McpError(ErrorCode.InvalidParams, `Invalid format: ${format}. Valid formats are: Raw, scripts_only, no_scripts`);
-                    }
+                    const detailLevel = args?.detailLevel || 'RootObjectsOnly';
+                    // Send request to Unity and wait for response
+                    const sceneInfo = await wsHandler.requestSceneInfo(detailLevel);
                     return {
                         content: [{
                                 type: 'text',
-                                text: JSON.stringify(responseData, null, 2)
+                                text: JSON.stringify(sceneInfo, null, 2)
                             }]
                     };
                 }
                 catch (error) {
-                    throw new McpError(ErrorCode.InternalError, `Failed to process editor state: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                    throw new McpError(ErrorCode.InternalError, `Failed to get scene info: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                }
+            }
+            case 'get_game_objects_info': {
+                try {
+                    if (!args?.instanceIDs || !Array.isArray(args.instanceIDs)) {
+                        throw new McpError(ErrorCode.InvalidParams, 'instanceIDs array is required');
+                    }
+                    const instanceIDs = args.instanceIDs;
+                    const detailLevel = args?.detailLevel || 'IncludeComponents';
+                    // Send request to Unity and wait for response
+                    const gameObjectsInfo = await wsHandler.requestGameObjectsInfo(instanceIDs, detailLevel);
+                    return {
+                        content: [{
+                                type: 'text',
+                                text: JSON.stringify(gameObjectsInfo, null, 2)
+                            }]
+                    };
+                }
+                catch (error) {
+                    throw new McpError(ErrorCode.InternalError, `Failed to get GameObject info: ${error instanceof Error ? error.message : 'Unknown error'}`);
                 }
             }
             case 'execute_editor_command': {
