@@ -1,0 +1,19 @@
+{
+    "name": "com.quaza.unitymcp",
+    "version": "0.0.1",
+    "displayName": "Package Example",
+    "description": "This is an example package",
+    "unity": "2021.3",
+    "dependencies": {
+   },
+   "keywords": [
+      "ai",
+      "Model Context Protocol",
+      "Unity AI Tool",
+      "Unity MCP"
+    ],
+    "author": {
+      "name": "Shahzad",
+      "url": "https://quazaai.com/"
+    }
+  }
