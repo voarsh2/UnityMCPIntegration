@@ -15,13 +15,13 @@ export class WebSocketHandler {
     lastHeartbeat = 0;
     connectionEstablished = false;
     pendingRequests = {};
-    constructor(port = 8080) {
+    constructor(port = parseInt(process.env.MCP_WEBSOCKET_PORT || '8080')) {
         // Initialize WebSocket Server
         this.wsServer = new WebSocketServer({ port });
         this.setupWebSocketServer();
     }
     setupWebSocketServer() {
-        console.error('[Unity MCP] WebSocket server starting on port 8080');
+        console.error(`[Unity MCP] WebSocket server starting on port ${this.wsServer.options.port}`);
         this.wsServer.on('listening', () => {
             console.error('[Unity MCP] WebSocket server is listening for connections');
         });

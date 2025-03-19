@@ -16,8 +16,13 @@ class UnityMCPServer {
                 tools: {},
             },
         });
+        
+        // Get port from environment variable or use default
+        const wsPort = parseInt(process.env.MCP_WEBSOCKET_PORT || '8080');
+        
         // Initialize WebSocket Handler for Unity communication
-        this.wsHandler = new WebSocketHandler(8080);
+        this.wsHandler = new WebSocketHandler(wsPort);
+        
         // Register MCP tools
         registerTools(this.server, this.wsHandler);
         // Error handling

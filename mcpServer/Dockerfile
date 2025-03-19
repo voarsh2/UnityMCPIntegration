@@ -16,11 +16,11 @@ COPY src/ ./src/
 # Build the application
 RUN npm run build
 
-# Expose WebSocket port (will be overridden if MCP_WEBSOCKET_PORT env is set)
-EXPOSE 8080
-
-# Set environment variables with default values
+# Default environment variable
 ENV MCP_WEBSOCKET_PORT=8080
 
+# Expose the port dynamically using the environment variable
+EXPOSE ${MCP_WEBSOCKET_PORT}
+
 # Command to run the MCP server
-CMD ["node", "build/index.js"]
+CMD ["sh", "-c", "node build/index.js"]
