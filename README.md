@@ -1,4 +1,19 @@
-# Unity MCP Integration <img src="mcpInspector.png" alt="Unity MCP Inspector" align="right" width="400"/>
+# Unity MCP Integration 
+
+[![MCP](https://badge.mcpx.dev)](https://modelcontextprotocol.io/introduction)
+[![Unity](https://img.shields.io/badge/Unity-2021.3%2B-green?logo=https://w7.pngwing.com/pngs/426/535/png-transparent-unity-new-logo-tech-companies-thumbnail.png)](https://unity.com)
+[![Node.js](https://img.shields.io/badge/Node.js-18%2B-green)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org)
+[![WebSockets](https://img.shields.io/badge/WebSockets-API-orange)](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API)
+
+[![Stars](https://img.shields.io/github/stars/shahzadgamedev/UnityMCPIntegration)](https://github.com/shahzadgamedev/UnityMCPIntegration/stargazers)
+[![Forks](https://img.shields.io/github/forks/shahzadgamedev/UnityMCPIntegration)](https://github.com/shahzadgamedev/UnityMCPIntegration/network/members)
+[![License](https://img.shields.io/github/license/shahzadgamedev/UnityMCPIntegration)](https://github.com/shahzadgamedev/UnityMCPIntegration/blob/main/LICENSE)
+[![Last Commit](https://img.shields.io/github/last-commit/shahzadgamedev/UnityMCPIntegration)](https://github.com/shahzadgamedev/UnityMCPIntegration/commits/main)
+
+<div align="center">
+  <img src="mcpInspector.png" alt="Unity MCP Inspector" width="400" align="right" style="margin-left: 20px; margin-bottom: 20px;"/>
+</div>
 
 This package provides a seamless integration between [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) and Unity Editor, allowing AI assistants to understand and interact with your Unity projects in real-time. With this integration, AI assistants can access information about your scene hierarchy, project settings, and execute code directly in the Unity Editor context.
 
@@ -12,12 +27,6 @@ The Model Context Protocol (MCP) is a standardized protocol that connects AI mod
 - Monitor logs and errors
 - Control the Editor's play mode
 
-Learn more about MCP:
-- [MCP Introduction](https://modelcontextprotocol.io/introduction)
-- [MCP Server Documentation](https://modelcontextprotocol.io/quickstart/server)
-- [MCP Client Documentation](https://modelcontextprotocol.io/quickstart/client) 
-- [MCP Tools Concepts](https://modelcontextprotocol.io/docs/concepts/tools)
-
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -27,13 +36,24 @@ Learn more about MCP:
 
 ### Installation
 
-#### 1. Import the Unity Package
+#### 1. Install Unity Package
 
-Import the Unity package into your project:
+You have several options to install the Unity package:
 
+**Option A: Import Custom Package**
 1. Clone this repository or download it as a zip
 2. In Unity, go to `Assets > Import Package > Custom Package`
 3. Select the `UnityMCPConnection.unitypackage` file
+
+**Option B: Package Manager (Git URL)**
+1. Open the Unity Package Manager (`Window > Package Manager`)
+2. Click the `+` button and select `Add package from git URL...`
+3. Enter the repository URL: `https://github.com/shahzadgamedev/UnityMCPIntegration.git?path=/UnityMCPConnection`
+4. Click `Add`
+
+**Option C: Manual Installation**
+1. Clone this repository
+2. Copy the `UnityMCPConnection` folder to your Unity project's `Assets` directory
 
 #### 2. Set up the MCP Server
 
@@ -53,7 +73,7 @@ You have two options to run the MCP server:
 
 **Option B: Add to MCP Host configuration**
 
-Add the server to your MCP Host configuration for claude Desktop, Custom Implementation etc
+Add the server to your MCP Host configuration for Claude Desktop, Custom Implementation etc
 
 ```json
 {
