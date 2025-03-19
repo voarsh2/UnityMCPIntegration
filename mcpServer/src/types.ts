@@ -6,9 +6,17 @@ export interface UnityEditorState {
   selectedObjects: string[];
   playModeState: string;
   sceneHierarchy: any;
-  projectStructure: {
-    [key: string]: string[];
-  };
+  // Removed projectStructure property
+  timestamp?: string;
+  // Enhanced project information fields
+  renderPipeline?: string;
+  buildTarget?: string;
+  projectName?: string;
+  graphicsDeviceType?: string;
+  unityVersion?: string;
+  currentSceneName?: string;
+  currentScenePath?: string;
+  availableMenuItems?: string[];
 }
 
 // Log entry from Unity
@@ -74,8 +82,8 @@ export interface HandshakeMessage {
   data: { message: string };
 }
 
-export interface HeartbeatMessage {
-  type: 'heartbeat';
+export interface PingMessage {
+  type: 'ping';
   data: { timestamp: number };
 }
 
@@ -114,7 +122,7 @@ export type UnityMessage =
 export type ServerMessage =
   | ExecuteEditorCommandMessage
   | HandshakeMessage
-  | HeartbeatMessage
+  | PingMessage
   | RequestEditorStateMessage
   | GetSceneInfoMessage
   | GetGameObjectsInfoMessage;

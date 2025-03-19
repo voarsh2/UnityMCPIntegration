@@ -19,11 +19,35 @@ namespace Plugins.GamePilot.Editor.MCP
         [JsonProperty("sceneHierarchy")]
         public List<MCPGameObjectInfo> SceneHierarchy { get; set; } = new List<MCPGameObjectInfo>();
         
-        [JsonProperty("projectStructure")]
-        public MCPProjectStructure ProjectStructure { get; set; } = new MCPProjectStructure();
+        // Removed ProjectStructure property
         
         [JsonProperty("timestamp")]
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+        
+        // Enhanced project information properties
+        [JsonProperty("renderPipeline")]
+        public string RenderPipeline { get; set; } = "Unknown";
+        
+        [JsonProperty("buildTarget")]
+        public string BuildTarget { get; set; } = "Unknown";
+        
+        [JsonProperty("projectName")]
+        public string ProjectName { get; set; } = "Unknown";
+        
+        [JsonProperty("graphicsDeviceType")]
+        public string GraphicsDeviceType { get; set; } = "Unknown";
+        
+        [JsonProperty("unityVersion")]
+        public string UnityVersion { get; set; } = "Unknown";
+        
+        [JsonProperty("currentSceneName")]
+        public string CurrentSceneName { get; set; } = "Unknown";
+        
+        [JsonProperty("currentScenePath")]
+        public string CurrentScenePath { get; set; } = "Unknown";
+        
+        [JsonProperty("availableMenuItems")]
+        public List<string> AvailableMenuItems { get; set; } = new List<string>();
     }
     
     [Serializable]
@@ -51,21 +75,7 @@ namespace Plugins.GamePilot.Editor.MCP
         public string Tag { get; set; }
     }
     
-    [Serializable]
-    public class MCPProjectStructure
-    {
-        [JsonProperty("scenes")]
-        public string[] Scenes { get; set; } = new string[0];
-        
-        [JsonProperty("prefabs")]
-        public string[] Prefabs { get; set; } = new string[0];
-        
-        [JsonProperty("scripts")]
-        public string[] Scripts { get; set; } = new string[0];
-        
-        [JsonProperty("assets")]
-        public string[] Assets { get; set; } = new string[0];
-    }
+    // Removed MCPProjectStructure class
     
     [Serializable]
     public class LogEntry

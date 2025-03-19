@@ -43,20 +43,19 @@ namespace Plugins.GamePilot.Editor.MCP
                         await HandleTogglePlayModeAsync();
                         break;
                     
-                    case "executeEditorCommand": // Changed from "executeCommand" to match new server message type
+                    case "executeEditorCommand":
                         await HandleExecuteCommandAsync(message.Data);
                         break;
                     
-                    case "getEditorState":
-                    case "requestEditorState": // Added new message type from server
-                        await HandleGetEditorStateAsync(message.Data);
+                    case "requestEditorState": // Consolidated to a single message type
+                        await HandleRequestEditorStateAsync(message.Data);
                         break;
                         
                     case "getLogs":
                         await HandleGetLogsAsync(message.Data);
                         break;
                         
-                    case "handshake": // Added to handle server handshake message
+                    case "handshake":
                         await HandleHandshakeAsync(message.Data);
                         break;
                         
@@ -66,6 +65,10 @@ namespace Plugins.GamePilot.Editor.MCP
                         
                     case "getGameObjectsInfo":
                         await HandleGetGameObjectsInfoAsync(message.Data);
+                        break;
+                        
+                    case "ping": // Renamed from 'heartbeat' to 'ping' to match protocol
+                        await HandlePingAsync(message.Data);
                         break;
                         
                     default:
@@ -79,7 +82,6 @@ namespace Plugins.GamePilot.Editor.MCP
             }
         }
         
-        // Add a new handler for handshake messages
         private async Task HandleHandshakeAsync(JToken data)
         {
             try
@@ -87,16 +89,26 @@ namespace Plugins.GamePilot.Editor.MCP
                 string message = data["message"]?.ToString() ?? "Server connected";
                 Debug.Log($"[MCP] Handshake received: {message}");
                 
-                // Send editor state in response to handshake to establish connection
-                var editorState = dataCollector.GetEditorState();
-                await messageSender.SendEditorStateAsync(editorState);
-                
-                // disable periodic updates after handshake
-               // MCPManager.EnablePeriodicUpdates(false);
+                // Send a simple acknowledgment, but don't send full editor state until requested
+                await messageSender.SendPongAsync();
             }
             catch (Exception ex)
             {
                 Debug.LogError($"[MCP] Error handling handshake: {ex.Message}");
+            }
+        }
+        
+        // Add a ping handler to respond to server heartbeats
+        private async Task HandlePingAsync(JToken data)
+        {
+            try
+            {
+                // Simply respond with a pong message
+                await messageSender.SendPongAsync();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP] Error handling ping: {ex.Message}");
             }
         }
         
@@ -118,7 +130,7 @@ namespace Plugins.GamePilot.Editor.MCP
                     // If requestId was provided, send back object details
                     if (!string.IsNullOrEmpty(requestId))
                     {
-                        await messageSender.SendGameObjectDetailsAsync(requestId, obj);
+                        await messageSender.SendGameObjectsDetailsAsync(requestId, obj);
                     }
                 }
                 else
@@ -190,12 +202,14 @@ namespace Plugins.GamePilot.Editor.MCP
             }
         }
         
-        private async Task HandleGetEditorStateAsync(JToken data)
+        // Renamed from HandleGetEditorStateAsync to HandleRequestEditorStateAsync for clarity
+        private async Task HandleRequestEditorStateAsync(JToken data)
         {
             try
             {
-                // Get current editor state
-                var editorState = dataCollector.GetEditorState();
+                // Get current editor state with enhanced project info
+                var editorState = GetEnhancedEditorState();
+                
                 // Send it to the server
                 await messageSender.SendEditorStateAsync(editorState);
             }
@@ -203,6 +217,68 @@ namespace Plugins.GamePilot.Editor.MCP
             {
                 Debug.LogError($"[MCP] Error getting editor state: {ex.Message}");
             }
+        }
+        
+        // New method to get enhanced editor state with more project information
+        private MCPEditorState GetEnhancedEditorState()
+        {
+            // Get base editor state from data collector
+            var state = dataCollector.GetEditorState();
+            
+            // Add additional project information
+            EnhanceEditorStateWithProjectInfo(state);
+            
+            return state;
+        }
+        
+        // Add additional project information to the editor state
+        private void EnhanceEditorStateWithProjectInfo(MCPEditorState state)
+        {
+            try
+            {
+                // Add information about current rendering pipeline
+                state.RenderPipeline = GetCurrentRenderPipeline();
+                
+                // Add current build target platform
+                state.BuildTarget = EditorUserBuildSettings.activeBuildTarget.ToString();
+                
+                // Add project name
+                state.ProjectName = Application.productName;
+                
+                // Add graphics API info
+                state.GraphicsDeviceType = SystemInfo.graphicsDeviceType.ToString();
+                
+                // Add Unity version
+                state.UnityVersion = Application.unityVersion;
+                
+                // Add current scene name
+                var currentScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+                state.CurrentSceneName = currentScene.name;
+                state.CurrentScenePath = currentScene.path;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP] Error enhancing editor state: {ex.Message}");
+            }
+        }
+        
+        // Helper to determine current render pipeline
+        private string GetCurrentRenderPipeline()
+        {
+            if (UnityEngine.Rendering.GraphicsSettings.renderPipelineAsset == null)
+                return "Built-in Render Pipeline";
+                
+            var pipelineType = UnityEngine.Rendering.GraphicsSettings.renderPipelineAsset.GetType().Name;
+            
+            // Try to make the name more user-friendly
+            if (pipelineType.Contains("Universal"))
+                return "Universal Render Pipeline (URP)";
+            else if (pipelineType.Contains("HD"))
+                return "High Definition Render Pipeline (HDRP)";
+            else if (pipelineType.Contains("Lightweight"))
+                return "Lightweight Render Pipeline (LWRP)";
+            else
+                return pipelineType;
         }
         
         private async Task HandleGetLogsAsync(JToken data)

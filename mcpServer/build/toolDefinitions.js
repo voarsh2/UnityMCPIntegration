@@ -134,52 +134,33 @@ export function registerTools(server, wsHandler) {
                 }
             },
             {
-                name: 'find_game_objects',
-                description: 'Find GameObjects in the current scene by name, tag, or component',
-                category: 'Editor Control',
-                tags: ['unity', 'editor', 'gameobjects'],
-                inputSchema: {
-                    type: 'object',
-                    properties: {
-                        nameContains: {
-                            type: 'string',
-                            description: 'Filter GameObjects by name (case-sensitive)'
-                        },
-                        tag: {
-                            type: 'string',
-                            description: 'Filter GameObjects by tag'
-                        },
-                        componentType: {
-                            type: 'string',
-                            description: 'Filter GameObjects by component type'
-                        }
-                    },
-                    additionalProperties: false
-                },
-                returns: {
-                    type: 'object',
-                    description: 'Returns a list of matching GameObjects'
-                }
-            },
-            {
                 name: 'verify_connection',
                 description: 'Verify that the MCP server has an active connection to Unity Editor',
                 category: 'Connection',
                 tags: ['unity', 'editor', 'connection'],
                 inputSchema: {
                     type: 'object',
-                    properties: {
-                        requestEditorState: {
-                            type: 'boolean',
-                            description: 'Whether to request fresh editor state from Unity',
-                            default: false
-                        }
-                    },
+                    properties: {},
                     additionalProperties: false
                 },
                 returns: {
                     type: 'object',
                     description: 'Returns connection status information'
+                }
+            },
+            {
+                name: 'get_editor_state',
+                description: 'Get the current Unity Editor state including project information',
+                category: 'Editor State',
+                tags: ['unity', 'editor', 'project'],
+                inputSchema: {
+                    type: 'object',
+                    properties: {},
+                    additionalProperties: false
+                },
+                returns: {
+                    type: 'object',
+                    description: 'Returns detailed information about the current Unity Editor state, project settings, and environment'
                 }
             }
         ],
@@ -191,8 +172,8 @@ export function registerTools(server, wsHandler) {
         if (name === 'verify_connection') {
             try {
                 const isConnected = wsHandler.isConnected();
-                // Optionally request a fresh editor state
-                if (args?.requestEditorState === true && isConnected) {
+                // Always request fresh editor state if connected
+                if (isConnected) {
                     wsHandler.requestEditorState();
                 }
                 return {
@@ -228,6 +209,25 @@ export function registerTools(server, wsHandler) {
                 'and ensure the Unity Editor is running with the MCP plugin and that the WebSocket connection is established.');
         }
         switch (name) {
+            case 'get_editor_state': {
+                try {
+                    // Always request a fresh editor state before returning
+                    wsHandler.requestEditorState();
+                    // Wait a moment for the response to arrive
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    // Return the current editor state
+                    const editorState = wsHandler.getEditorState();
+                    return {
+                        content: [{
+                                type: 'text',
+                                text: JSON.stringify(editorState, null, 2)
+                            }]
+                    };
+                }
+                catch (error) {
+                    throw new McpError(ErrorCode.InternalError, `Failed to get editor state: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                }
+            }
             case 'get_current_scene_info': {
                 try {
                     const detailLevel = args?.detailLevel || 'RootObjectsOnly';
@@ -319,50 +319,6 @@ export function registerTools(server, wsHandler) {
                 }
                 catch (error) {
                     throw new McpError(ErrorCode.InternalError, `Failed to retrieve logs: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                }
-            }
-            case 'find_game_objects': {
-                try {
-                    const nameContains = args?.nameContains;
-                    const tag = args?.tag;
-                    const componentType = args?.componentType;
-                    // Construct C# code for finding GameObjects based on provided filters
-                    let findCode = 'var results = new List<GameObject>();\n';
-                    if (tag) {
-                        findCode += `var taggedObjects = GameObject.FindGameObjectsWithTag("${tag}");\n`;
-                        findCode += 'results.AddRange(taggedObjects);\n';
-                    }
-                    else {
-                        findCode += 'var allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();\n';
-                        findCode += 'results.AddRange(allObjects);\n';
-                    }
-                    if (nameContains) {
-                        findCode += `results = results.Where(go => go.name.Contains("${nameContains}")).ToList();\n`;
-                    }
-                    if (componentType) {
-                        findCode += `results = results.Where(go => go.GetComponent("${componentType}") != null).ToList();\n`;
-                    }
-                    findCode += 'return results.Select(go => go.name).ToArray();';
-                    // Execute the search code
-                    const result = await wsHandler.executeEditorCommand(`
-            using System.Linq;
-            using System.Collections.Generic;
-            using UnityEngine;
-            
-            ${findCode}
-          `);
-                    return {
-                        content: [{
-                                type: 'text',
-                                text: JSON.stringify({
-                                    gameObjects: result,
-                                    count: Array.isArray(result) ? result.length : 0
-                                }, null, 2)
-                            }]
-                    };
-                }
-                catch (error) {
-                    throw new McpError(ErrorCode.InternalError, `Failed to find GameObjects: ${error instanceof Error ? error.message : 'Unknown error'}`);
                 }
             }
             default:
