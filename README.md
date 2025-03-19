@@ -6,10 +6,10 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org)
 [![WebSockets](https://img.shields.io/badge/WebSockets-API-orange)](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API)
 
-[![Stars](https://img.shields.io/github/stars/shahzadgamedev/UnityMCPIntegration)](https://github.com/shahzadgamedev/UnityMCPIntegration/stargazers)
-[![Forks](https://img.shields.io/github/forks/shahzadgamedev/UnityMCPIntegration)](https://github.com/shahzadgamedev/UnityMCPIntegration/network/members)
-[![License](https://img.shields.io/github/license/shahzadgamedev/UnityMCPIntegration)](https://github.com/shahzadgamedev/UnityMCPIntegration/blob/main/LICENSE)
-[![Last Commit](https://img.shields.io/github/last-commit/shahzadgamedev/UnityMCPIntegration)](https://github.com/shahzadgamedev/UnityMCPIntegration/commits/main)
+[![Stars](https://img.shields.io/github/stars/quazaai/UnityMCPIntegration)](https://github.com/quazaai/UnityMCPIntegration/stargazers)
+[![Forks](https://img.shields.io/github/forks/quazaai/UnityMCPIntegration)](https://github.com/quazaai/UnityMCPIntegration/network/members)
+[![License](https://img.shields.io/github/license/quazaai/UnityMCPIntegration)](https://github.com/quazaai/UnityMCPIntegration/blob/main/LICENSE)
+[![Last Commit](https://img.shields.io/github/last-commit/quazaai/UnityMCPIntegration)](https://github.com/quazaai/UnityMCPIntegration/commits/main)
 
 <div align="center">
   <img src="mcpInspector.png" alt="Unity MCP Inspector" width="400" align="right" style="margin-left: 20px; margin-bottom: 20px;"/>
@@ -45,7 +45,7 @@ You have several options to install the Unity package:
 **Option A: Package Manager (Git URL)**
 1. Open the Unity Package Manager (`Window > Package Manager`)
 2. Click the `+` button and select `Add package from git URL...`
-3. Enter the repository URL: `https://github.com/shahzadgamedev/UnityMCPIntegration.git`
+3. Enter the repository URL: `https://github.com/quazaai/UnityMCPIntegration.git`
 4. Click `Add`
 
 **Option B: Import Custom Package**
