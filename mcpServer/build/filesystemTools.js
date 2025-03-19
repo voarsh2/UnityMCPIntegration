@@ -1,63 +1,50 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { z } from 'zod';
-import { zodToJsonSchema } from 'zod-to-json-schema';
 import { createTwoFilesPatch } from 'diff';
 import { minimatch } from 'minimatch';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-// Schema definitions
-const ReadFileArgsSchema = z.object({
-    path: z.string().describe('Path to the file to read'),
-});
-const ReadMultipleFilesArgsSchema = z.object({
-    paths: z.array(z.string()).describe('Array of file paths to read'),
-});
-const WriteFileArgsSchema = z.object({
-    path: z.string().describe('Path to the file to write'),
-    content: z.string().describe('Content to write to the file'),
-});
-const EditOperation = z.object({
-    oldText: z.string().describe('Text to search for - must match exactly'),
-    newText: z.string().describe('Text to replace with')
-});
-const EditFileArgsSchema = z.object({
-    path: z.string().describe('Path to the file to edit'),
-    edits: z.array(EditOperation).describe('Array of edit operations to apply'),
-    dryRun: z.boolean().default(false).describe('Preview changes using git-style diff format')
-});
-const ListDirectoryArgsSchema = z.object({
-    path: z.string().describe('Path to the directory to list'),
-});
-const DirectoryTreeArgsSchema = z.object({
-    path: z.string().describe('Path to the directory to get tree of'),
-    maxDepth: z.number().optional().default(5).describe('Maximum depth to traverse'),
-});
-const SearchFilesArgsSchema = z.object({
-    path: z.string().describe('Path to search from'),
-    pattern: z.string().describe('Pattern to search for'),
-    excludePatterns: z.array(z.string()).optional().default([]).describe('Patterns to exclude')
-});
-const GetFileInfoArgsSchema = z.object({
-    path: z.string().describe('Path to the file to get info for'),
-});
-const FindAssetsByTypeArgsSchema = z.object({
-    assetType: z.string().describe('Type of assets to find (e.g., "Material", "Prefab", "Scene")'),
-    searchPath: z.string().optional().default("Assets").describe('Directory to search in')
-});
-const ListScriptsArgsSchema = z.object({
-    path: z.string().optional().default("Assets/Scripts").describe('Path to look for scripts in'),
-});
+import { ReadFileArgsSchema, ReadMultipleFilesArgsSchema, WriteFileArgsSchema, EditFileArgsSchema, ListDirectoryArgsSchema, DirectoryTreeArgsSchema, SearchFilesArgsSchema, GetFileInfoArgsSchema, FindAssetsByTypeArgsSchema, ListScriptsArgsSchema } from './toolDefinitions.js';
 // Helper functions
+// Updated validatePath function to properly handle empty paths
 async function validatePath(requestedPath, assetRootPath) {
+    // If path is empty or just quotes, use the asset root path directly
+    if (!requestedPath || requestedPath.trim() === '' || requestedPath.trim() === '""' || requestedPath.trim() === "''") {
+        return assetRootPath;
+    }
+    // Clean the path to remove any unexpected quotes or escape characters
+    let cleanPath = requestedPath.replace(/['"\\]/g, '');
+    // Handle empty path after cleaning
+    if (!cleanPath || cleanPath.trim() === '') {
+        return assetRootPath;
+    }
     // Normalize path to handle both Windows and Unix-style paths
-    const normalized = path.normalize(requestedPath);
-    // Ensure path starts with Assets or ProjectSettings folder for safety
-    const absolute = path.isAbsolute(normalized)
-        ? normalized
-        : path.join(assetRootPath, normalized);
+    const normalized = path.normalize(cleanPath);
+    // For relative paths, join with asset root path
+    // Only check for absolute paths using path.isAbsolute - all other paths are considered relative
+    let absolute;
+    if (path.isAbsolute(normalized)) {
+        absolute = normalized;
+        // Additional check: if the absolute path is outside the project and doesn't exist,
+        // try treating it as a relative path first
+        if (!absolute.startsWith(assetRootPath)) {
+            const tryRelative = path.join(assetRootPath, normalized);
+            try {
+                await fs.access(tryRelative);
+                // If we can access it as a relative path, use that instead
+                absolute = tryRelative;
+            }
+            catch {
+                // If we can't access it as a relative path either, keep the original absolute path
+                // and let the next check handle the potential error
+            }
+        }
+    }
+    else {
+        absolute = path.join(assetRootPath, normalized);
+    }
     const resolvedPath = path.resolve(absolute);
     // Ensure we don't escape out of the Unity project folder
-    if (!resolvedPath.startsWith(assetRootPath)) {
+    // Special case for empty path: it should always resolve to the project root
+    if (!resolvedPath.startsWith(assetRootPath) && requestedPath.trim() !== '') {
         throw new Error(`Access denied: Path ${requestedPath} is outside the Unity project directory`);
     }
     return resolvedPath;
@@ -242,318 +229,243 @@ function getUnityAssetType(filePath) {
     };
     return assetTypes[ext] || 'Other';
 }
-// Register filesystem tools with the MCP server
-export function registerFilesystemTools(server, wsHandler) {
-    // Determine project root path from environment variable or default to parent of Assets folder
-    const projectPath = process.env.UNITY_PROJECT_PATH || path.resolve(process.cwd());
-    // Get the original CallToolRequestSchema handler
-    const originalCallToolHandler = server.handlers.get('mcp.callTool');
-    // Create a modified CallToolRequestSchema handler that also handles filesystem tools
-    server.setRequestHandler(CallToolRequestSchema, async (request) => {
-        const { name, arguments: args } = request.params;
-        try {
-            switch (name) {
-                case "read_file": {
-                    const parsed = ReadFileArgsSchema.safeParse(args);
-                    if (!parsed.success) {
-                        return {
-                            content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
-                            isError: true
-                        };
-                    }
-                    const validPath = await validatePath(parsed.data.path, projectPath);
-                    const content = await fs.readFile(validPath, "utf-8");
-                    return {
-                        content: [{ type: "text", text: content }],
-                    };
-                }
-                case "read_multiple_files": {
-                    const parsed = ReadMultipleFilesArgsSchema.safeParse(args);
-                    if (!parsed.success) {
-                        return {
-                            content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
-                            isError: true
-                        };
-                    }
-                    const results = await Promise.all(parsed.data.paths.map(async (filePath) => {
-                        try {
-                            const validPath = await validatePath(filePath, projectPath);
-                            const content = await fs.readFile(validPath, "utf-8");
-                            return `${filePath}:\n${content}\n`;
-                        }
-                        catch (error) {
-                            const errorMessage = error instanceof Error ? error.message : String(error);
-                            return `${filePath}: Error - ${errorMessage}`;
-                        }
-                    }));
-                    return {
-                        content: [{ type: "text", text: results.join("\n---\n") }],
-                    };
-                }
-                case "write_file": {
-                    const parsed = WriteFileArgsSchema.safeParse(args);
-                    if (!parsed.success) {
-                        return {
-                            content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
-                            isError: true
-                        };
-                    }
-                    const validPath = await validatePath(parsed.data.path, projectPath);
-                    // Ensure directory exists
-                    const dirPath = path.dirname(validPath);
-                    await fs.mkdir(dirPath, { recursive: true });
-                    await fs.writeFile(validPath, parsed.data.content, "utf-8");
-                    return {
-                        content: [{ type: "text", text: `Successfully wrote to ${parsed.data.path}` }],
-                    };
-                }
-                case "edit_file": {
-                    const parsed = EditFileArgsSchema.safeParse(args);
-                    if (!parsed.success) {
-                        return {
-                            content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
-                            isError: true
-                        };
-                    }
-                    const validPath = await validatePath(parsed.data.path, projectPath);
-                    const result = await applyFileEdits(validPath, parsed.data.edits, parsed.data.dryRun);
-                    return {
-                        content: [{ type: "text", text: result }],
-                    };
-                }
-                case "list_directory": {
-                    const parsed = ListDirectoryArgsSchema.safeParse(args);
-                    if (!parsed.success) {
-                        return {
-                            content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
-                            isError: true
-                        };
-                    }
-                    const validPath = await validatePath(parsed.data.path, projectPath);
-                    const entries = await fs.readdir(validPath, { withFileTypes: true });
-                    const formatted = entries
-                        .map((entry) => {
-                        if (entry.isDirectory()) {
-                            return `[DIR] ${entry.name}`;
-                        }
-                        else {
-                            // For files, detect Unity asset type
-                            const filePath = path.join(validPath, entry.name);
-                            const assetType = getUnityAssetType(filePath);
-                            return `[${assetType}] ${entry.name}`;
-                        }
-                    })
-                        .join("\n");
-                    return {
-                        content: [{ type: "text", text: formatted }],
-                    };
-                }
-                case "directory_tree": {
-                    const parsed = DirectoryTreeArgsSchema.safeParse(args);
-                    if (!parsed.success) {
-                        return {
-                            content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
-                            isError: true
-                        };
-                    }
-                    const treeData = await buildDirectoryTree(parsed.data.path, projectPath, parsed.data.maxDepth);
-                    return {
-                        content: [{ type: "text", text: JSON.stringify(treeData, null, 2) }],
-                    };
-                }
-                case "search_files": {
-                    const parsed = SearchFilesArgsSchema.safeParse(args);
-                    if (!parsed.success) {
-                        return {
-                            content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
-                            isError: true
-                        };
-                    }
-                    const validPath = await validatePath(parsed.data.path, projectPath);
-                    const results = await searchFiles(validPath, parsed.data.pattern, parsed.data.excludePatterns);
-                    return {
-                        content: [{
-                                type: "text",
-                                text: results.length > 0
-                                    ? `Found ${results.length} results:\n${results.join("\n")}`
-                                    : "No matches found"
-                            }],
-                    };
-                }
-                case "get_file_info": {
-                    const parsed = GetFileInfoArgsSchema.safeParse(args);
-                    if (!parsed.success) {
-                        return {
-                            content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
-                            isError: true
-                        };
-                    }
-                    const validPath = await validatePath(parsed.data.path, projectPath);
-                    const info = await getFileStats(validPath);
-                    // Also get Unity-specific info if it's an asset file
-                    const additionalInfo = {};
-                    if (info.isFile) {
-                        additionalInfo.assetType = getUnityAssetType(validPath);
-                    }
-                    const formattedInfo = Object.entries({ ...info, ...additionalInfo })
-                        .map(([key, value]) => `${key}: ${value}`)
-                        .join("\n");
-                    return {
-                        content: [{ type: "text", text: formattedInfo }],
-                    };
-                }
-                case "find_assets_by_type": {
-                    const parsed = FindAssetsByTypeArgsSchema.safeParse(args);
-                    if (!parsed.success) {
-                        return {
-                            content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
-                            isError: true
-                        };
-                    }
-                    const validPath = await validatePath(parsed.data.searchPath, projectPath);
-                    const results = [];
-                    const targetType = parsed.data.assetType.toLowerCase();
-                    // Recursive function to search for assets
-                    async function searchAssets(dir) {
-                        const entries = await fs.readdir(dir, { withFileTypes: true });
-                        for (const entry of entries) {
-                            const fullPath = path.join(dir, entry.name);
-                            if (entry.isDirectory()) {
-                                await searchAssets(fullPath);
-                            }
-                            else {
-                                const assetType = getUnityAssetType(fullPath);
-                                if (assetType.toLowerCase() === targetType) {
-                                    results.push(fullPath);
-                                }
-                            }
-                        }
-                    }
-                    await searchAssets(validPath);
-                    return {
-                        content: [{
-                                type: "text",
-                                text: results.length > 0
-                                    ? `Found ${results.length} ${parsed.data.assetType} assets:\n${results.join("\n")}`
-                                    : `No ${parsed.data.assetType} assets found`
-                            }],
-                    };
-                }
-                case "list_scripts": {
-                    const parsed = ListScriptsArgsSchema.safeParse(args);
-                    if (!parsed.success) {
-                        return {
-                            content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
-                            isError: true
-                        };
-                    }
-                    const validPath = await validatePath(parsed.data.path, projectPath);
-                    const scripts = [];
-                    // Recursive function to find C# scripts
-                    async function findScripts(dir) {
-                        const entries = await fs.readdir(dir, { withFileTypes: true });
-                        for (const entry of entries) {
-                            const fullPath = path.join(dir, entry.name);
-                            if (entry.isDirectory()) {
-                                await findScripts(fullPath);
-                            }
-                            else if (path.extname(entry.name).toLowerCase() === '.cs') {
-                                scripts.push({
-                                    path: fullPath,
-                                    name: entry.name
-                                });
-                            }
-                        }
-                    }
-                    await findScripts(validPath);
-                    const formattedScripts = scripts.map(s => `${s.name} (${s.path})`).join("\n");
-                    return {
-                        content: [{
-                                type: "text",
-                                text: scripts.length > 0
-                                    ? `Found ${scripts.length} C# scripts:\n${formattedScripts}`
-                                    : "No C# scripts found"
-                            }],
-                    };
-                }
-                default:
-                    // If it's not one of our filesystem tools and there's an original handler, use it
-                    if (originalCallToolHandler) {
-                        return originalCallToolHandler(request);
-                    }
-                    return {
-                        content: [{ type: "text", text: `Unknown tool: ${name}` }],
-                        isError: true,
-                    };
+// Handler function to process filesystem tools
+export async function handleFilesystemTool(name, args, projectPath) {
+    switch (name) {
+        case "read_file": {
+            const parsed = ReadFileArgsSchema.safeParse(args);
+            if (!parsed.success) {
+                return {
+                    content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
+                    isError: true
+                };
             }
-        }
-        catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
+            const validPath = await validatePath(parsed.data.path, projectPath);
+            const content = await fs.readFile(validPath, "utf-8");
             return {
-                content: [{ type: "text", text: `Error: ${errorMessage}` }],
-                isError: true,
+                content: [{ type: "text", text: content }],
             };
         }
-    });
-    // Update the ListToolsRequestSchema handler to add filesystem tools to the list
-    const originalListToolsHandler = server.handlers.get('mcp.listTools');
-    server.setRequestHandler(ListToolsRequestSchema, async (request) => {
-        // Call the original handler if it exists
-        const originalResponse = originalListToolsHandler ? await originalListToolsHandler(request) : { tools: [] };
-        // Add the filesystem tools to the list
-        const filesystemTools = [
-            {
-                name: "read_file",
-                description: "Read the contents of a file from the Unity project. Paths are relative to the project's Assets folder unless specified as absolute.",
-                inputSchema: zodToJsonSchema(ReadFileArgsSchema),
-            },
-            {
-                name: "read_multiple_files",
-                description: "Read the contents of multiple files from the Unity project simultaneously.",
-                inputSchema: zodToJsonSchema(ReadMultipleFilesArgsSchema),
-            },
-            {
-                name: "write_file",
-                description: "Create a new file or completely overwrite an existing file in the Unity project.",
-                inputSchema: zodToJsonSchema(WriteFileArgsSchema),
-            },
-            {
-                name: "edit_file",
-                description: "Make precise edits to a text file in the Unity project. Returns a git-style diff showing changes.",
-                inputSchema: zodToJsonSchema(EditFileArgsSchema),
-            },
-            {
-                name: "list_directory",
-                description: "Get a listing of all files and directories in a specified path in the Unity project.",
-                inputSchema: zodToJsonSchema(ListDirectoryArgsSchema),
-            },
-            {
-                name: "directory_tree",
-                description: "Get a recursive tree view of files and directories in the Unity project as a JSON structure.",
-                inputSchema: zodToJsonSchema(DirectoryTreeArgsSchema),
-            },
-            {
-                name: "search_files",
-                description: "Recursively search for files and directories matching a pattern in the Unity project.",
-                inputSchema: zodToJsonSchema(SearchFilesArgsSchema),
-            },
-            {
-                name: "get_file_info",
-                description: "Retrieve detailed metadata about a file or directory in the Unity project.",
-                inputSchema: zodToJsonSchema(GetFileInfoArgsSchema),
-            },
-            {
-                name: "find_assets_by_type",
-                description: "Find all Unity assets of a specified type (e.g., Material, Prefab, Script) in the project.",
-                inputSchema: zodToJsonSchema(FindAssetsByTypeArgsSchema),
-            },
-            {
-                name: "list_scripts",
-                description: "List all C# script files in the project, useful for understanding the codebase structure.",
-                inputSchema: zodToJsonSchema(ListScriptsArgsSchema),
+        case "read_multiple_files": {
+            const parsed = ReadMultipleFilesArgsSchema.safeParse(args);
+            if (!parsed.success) {
+                return {
+                    content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
+                    isError: true
+                };
             }
-        ];
-        originalResponse.tools = [...originalResponse.tools, ...filesystemTools];
-        return originalResponse;
-    });
+            const results = await Promise.all(parsed.data.paths.map(async (filePath) => {
+                try {
+                    const validPath = await validatePath(filePath, projectPath);
+                    const content = await fs.readFile(validPath, "utf-8");
+                    return `${filePath}:\n${content}\n`;
+                }
+                catch (error) {
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    return `${filePath}: Error - ${errorMessage}`;
+                }
+            }));
+            return {
+                content: [{ type: "text", text: results.join("\n---\n") }],
+            };
+        }
+        case "write_file": {
+            const parsed = WriteFileArgsSchema.safeParse(args);
+            if (!parsed.success) {
+                return {
+                    content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
+                    isError: true
+                };
+            }
+            const validPath = await validatePath(parsed.data.path, projectPath);
+            // Ensure directory exists
+            const dirPath = path.dirname(validPath);
+            await fs.mkdir(dirPath, { recursive: true });
+            await fs.writeFile(validPath, parsed.data.content, "utf-8");
+            return {
+                content: [{ type: "text", text: `Successfully wrote to ${parsed.data.path}` }],
+            };
+        }
+        case "edit_file": {
+            const parsed = EditFileArgsSchema.safeParse(args);
+            if (!parsed.success) {
+                return {
+                    content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
+                    isError: true
+                };
+            }
+            const validPath = await validatePath(parsed.data.path, projectPath);
+            const result = await applyFileEdits(validPath, parsed.data.edits, parsed.data.dryRun);
+            return {
+                content: [{ type: "text", text: result }],
+            };
+        }
+        case "list_directory": {
+            const parsed = ListDirectoryArgsSchema.safeParse(args);
+            if (!parsed.success) {
+                return {
+                    content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
+                    isError: true
+                };
+            }
+            const validPath = await validatePath(parsed.data.path, projectPath);
+            const entries = await fs.readdir(validPath, { withFileTypes: true });
+            const formatted = entries
+                .map((entry) => {
+                if (entry.isDirectory()) {
+                    return `[DIR] ${entry.name}`;
+                }
+                else {
+                    // For files, detect Unity asset type
+                    const filePath = path.join(validPath, entry.name);
+                    const assetType = getUnityAssetType(filePath);
+                    return `[${assetType}] ${entry.name}`;
+                }
+            })
+                .join("\n");
+            return {
+                content: [{ type: "text", text: formatted }],
+            };
+        }
+        case "directory_tree": {
+            const parsed = DirectoryTreeArgsSchema.safeParse(args);
+            if (!parsed.success) {
+                return {
+                    content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
+                    isError: true
+                };
+            }
+            const treeData = await buildDirectoryTree(parsed.data.path, projectPath, parsed.data.maxDepth);
+            return {
+                content: [{ type: "text", text: JSON.stringify(treeData, null, 2) }],
+            };
+        }
+        case "search_files": {
+            const parsed = SearchFilesArgsSchema.safeParse(args);
+            if (!parsed.success) {
+                return {
+                    content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
+                    isError: true
+                };
+            }
+            const validPath = await validatePath(parsed.data.path, projectPath);
+            const results = await searchFiles(validPath, parsed.data.pattern, parsed.data.excludePatterns);
+            return {
+                content: [{
+                        type: "text",
+                        text: results.length > 0
+                            ? `Found ${results.length} results:\n${results.join("\n")}`
+                            : "No matches found"
+                    }],
+            };
+        }
+        case "get_file_info": {
+            const parsed = GetFileInfoArgsSchema.safeParse(args);
+            if (!parsed.success) {
+                return {
+                    content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
+                    isError: true
+                };
+            }
+            const validPath = await validatePath(parsed.data.path, projectPath);
+            const info = await getFileStats(validPath);
+            // Also get Unity-specific info if it's an asset file
+            const additionalInfo = {};
+            if (info.isFile) {
+                additionalInfo.assetType = getUnityAssetType(validPath);
+            }
+            const formattedInfo = Object.entries({ ...info, ...additionalInfo })
+                .map(([key, value]) => `${key}: ${value}`)
+                .join("\n");
+            return {
+                content: [{ type: "text", text: formattedInfo }],
+            };
+        }
+        case "find_assets_by_type": {
+            const parsed = FindAssetsByTypeArgsSchema.safeParse(args);
+            if (!parsed.success) {
+                return {
+                    content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
+                    isError: true
+                };
+            }
+            const validPath = await validatePath(parsed.data.searchPath, projectPath);
+            const results = [];
+            const targetType = parsed.data.assetType.toLowerCase();
+            // Recursive function to search for assets
+            async function searchAssets(dir) {
+                const entries = await fs.readdir(dir, { withFileTypes: true });
+                for (const entry of entries) {
+                    const fullPath = path.join(dir, entry.name);
+                    if (entry.isDirectory()) {
+                        await searchAssets(fullPath);
+                    }
+                    else {
+                        const assetType = getUnityAssetType(fullPath);
+                        if (assetType.toLowerCase() === targetType) {
+                            results.push(fullPath);
+                        }
+                    }
+                }
+            }
+            await searchAssets(validPath);
+            return {
+                content: [{
+                        type: "text",
+                        text: results.length > 0
+                            ? `Found ${results.length} ${parsed.data.assetType} assets:\n${results.join("\n")}`
+                            : `No ${parsed.data.assetType} assets found`
+                    }],
+            };
+        }
+        case "list_scripts": {
+            const parsed = ListScriptsArgsSchema.safeParse(args);
+            if (!parsed.success) {
+                return {
+                    content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
+                    isError: true
+                };
+            }
+            const validPath = await validatePath(parsed.data.path, projectPath);
+            const scripts = [];
+            // Recursive function to find C# scripts
+            async function findScripts(dir) {
+                const entries = await fs.readdir(dir, { withFileTypes: true });
+                for (const entry of entries) {
+                    const fullPath = path.join(dir, entry.name);
+                    if (entry.isDirectory()) {
+                        await findScripts(fullPath);
+                    }
+                    else if (path.extname(entry.name).toLowerCase() === '.cs') {
+                        scripts.push({
+                            path: fullPath,
+                            name: entry.name
+                        });
+                    }
+                }
+            }
+            await findScripts(validPath);
+            const formattedScripts = scripts.map(s => `${s.name} (${s.path})`).join("\n");
+            return {
+                content: [{
+                        type: "text",
+                        text: scripts.length > 0
+                            ? `Found ${scripts.length} C# scripts:\n${formattedScripts}`
+                            : "No C# scripts found"
+                    }],
+            };
+        }
+        default:
+            return {
+                content: [{ type: "text", text: `Unknown tool: ${name}` }],
+                isError: true,
+            };
+    }
+}
+// Register filesystem tools with the MCP server
+// This function is now only a stub that doesn't actually do anything
+// since all tools are registered in toolDefinitions.ts
+export function registerFilesystemTools(server, wsHandler) {
+    // This function is now deprecated as tool registration has moved to toolDefinitions.ts
+    console.log("Filesystem tools are now registered in toolDefinitions.ts");
 }
