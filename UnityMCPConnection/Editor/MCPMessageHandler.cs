@@ -130,7 +130,8 @@ namespace Plugins.GamePilot.Editor.MCP
                     // If requestId was provided, send back object details
                     if (!string.IsNullOrEmpty(requestId))
                     {
-                        await messageSender.SendGameObjectsDetailsAsync(requestId, obj);
+                        // Use the new method to send details for a single GameObject
+                        await messageSender.SendGameObjectDetailsAsync(requestId, obj);
                     }
                 }
                 else
