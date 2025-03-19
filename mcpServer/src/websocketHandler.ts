@@ -13,8 +13,7 @@ export class WebSocketHandler {
     activeGameObjects: [],
     selectedObjects: [],
     playModeState: 'Stopped',
-    sceneHierarchy: {},
-    projectStructure: {}
+    sceneHierarchy: {}
   };
   
   private logBuffer: LogEntry[] = [];
@@ -82,7 +81,7 @@ export class WebSocketHandler {
       // Keep the automatic heartbeat for internal connection validation
       const pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
-          this.sendHeartbeat();
+          this.sendPing();
         } else {
           clearInterval(pingInterval);
         }
@@ -104,18 +103,17 @@ export class WebSocketHandler {
     }
   }
   
-  // Rename from sendPingKeepAlive to sendHeartbeat and modify to make it clear 
-  // this is just for internal connection health checks
-  private sendHeartbeat() {
+  // Rename from sendHeartbeat to sendPing for consistency with protocol
+  private sendPing() {
     try {
       if (this.unityConnection && this.unityConnection.readyState === WebSocket.OPEN) {
         this.unityConnection.send(JSON.stringify({
-          type: "heartbeat",
+          type: "ping",
           data: { timestamp: Date.now() }
         }));
       }
     } catch (error) {
-      console.error('[Unity MCP] Error sending heartbeat:', error);
+      console.error('[Unity MCP] Error sending ping:', error);
       this.connectionEstablished = false;
     }
   }
@@ -210,6 +208,7 @@ export class WebSocketHandler {
     }
   }
 
+  // Return the current editor state - only used by tools, doesn't request updates
   public getEditorState(): UnityEditorState {
     return this.editorState;
   }

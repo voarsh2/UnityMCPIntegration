@@ -147,18 +147,27 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
         tags: ['unity', 'editor', 'connection'],
         inputSchema: {
           type: 'object',
-          properties: {
-            requestEditorState: {
-              type: 'boolean',
-              description: 'Whether to request fresh editor state from Unity',
-              default: false
-            }
-          },
+          properties: {},
           additionalProperties: false
         },
         returns: {
           type: 'object',
           description: 'Returns connection status information'
+        }
+      },
+      {
+        name: 'get_editor_state',
+        description: 'Get the current Unity Editor state including project information',
+        category: 'Editor State',
+        tags: ['unity', 'editor', 'project'],
+        inputSchema: {
+          type: 'object',
+          properties: {},
+          additionalProperties: false
+        },
+        returns: {
+          type: 'object',
+          description: 'Returns detailed information about the current Unity Editor state, project settings, and environment'
         }
       }
     ],
@@ -173,8 +182,8 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
       try {
         const isConnected = wsHandler.isConnected();
         
-        // Optionally request a fresh editor state
-        if (args?.requestEditorState === true && isConnected) {
+        // Always request fresh editor state if connected
+        if (isConnected) {
           wsHandler.requestEditorState();
         }
         
@@ -213,8 +222,33 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
         'and ensure the Unity Editor is running with the MCP plugin and that the WebSocket connection is established.'
       );
     }
-
+    
     switch (name) {
+      case 'get_editor_state': {
+        try {
+          // Always request a fresh editor state before returning
+          wsHandler.requestEditorState();
+          
+          // Wait a moment for the response to arrive
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Return the current editor state
+          const editorState = wsHandler.getEditorState();
+          
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify(editorState, null, 2)
+            }]
+          };
+        } catch (error) {
+          throw new McpError(
+            ErrorCode.InternalError,
+            `Failed to get editor state: ${error instanceof Error ? error.message : 'Unknown error'}`
+          );
+        }
+      }
+      
       case 'get_current_scene_info': {
         try {
           const detailLevel = (args?.detailLevel as string) || 'RootObjectsOnly';

@@ -6,8 +6,7 @@ export class WebSocketHandler {
         activeGameObjects: [],
         selectedObjects: [],
         playModeState: 'Stopped',
-        sceneHierarchy: {},
-        projectStructure: {}
+        sceneHierarchy: {}
     };
     logBuffer = [];
     maxLogBufferSize = 1000;
@@ -57,7 +56,7 @@ export class WebSocketHandler {
                 this.unityConnection = null;
                 this.connectionEstablished = false;
             });
-            // Set up ping interval to keep connection alive
+            // Keep the automatic heartbeat for internal connection validation
             const pingInterval = setInterval(() => {
                 if (ws.readyState === WebSocket.OPEN) {
                     this.sendPing();
@@ -65,7 +64,7 @@ export class WebSocketHandler {
                 else {
                     clearInterval(pingInterval);
                 }
-            }, 30000); // Send ping every 30 seconds
+            }, 30000); // Send heartbeat every 30 seconds
         });
     }
     sendHandshake() {
@@ -82,14 +81,14 @@ export class WebSocketHandler {
             console.error('[Unity MCP] Error sending handshake:', error);
         }
     }
+    // Rename from sendHeartbeat to sendPing for consistency with protocol
     sendPing() {
         try {
             if (this.unityConnection && this.unityConnection.readyState === WebSocket.OPEN) {
                 this.unityConnection.send(JSON.stringify({
-                    type: 'ping',
+                    type: "ping",
                     data: { timestamp: Date.now() }
                 }));
-                console.error('[Unity MCP] Sent ping');
             }
         }
         catch (error) {
@@ -114,10 +113,9 @@ export class WebSocketHandler {
                 this.addLogEntry(message.data);
                 break;
             case 'pong':
-                // Update heartbeat on pong
+                // Update heartbeat reception timestamp when receiving pong
                 this.lastHeartbeat = Date.now();
                 this.connectionEstablished = true;
-                console.error('[Unity MCP] Received pong from Unity');
                 break;
             case 'sceneInfo':
                 // Handle scene info response
@@ -173,6 +171,7 @@ export class WebSocketHandler {
             throw error;
         }
     }
+    // Return the current editor state - only used by tools, doesn't request updates
     getEditorState() {
         return this.editorState;
     }

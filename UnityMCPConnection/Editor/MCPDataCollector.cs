@@ -95,7 +95,6 @@ namespace Plugins.GamePilot.Editor.MCP
                 SelectedObjects = GetSelectedObjects(),
                 PlayModeState = EditorApplication.isPlaying ? "Playing" : "Stopped",
                 SceneHierarchy = GetSceneHierarchy(),
-                ProjectStructure = GetProjectStructure(),
                 Timestamp = DateTime.UtcNow
             };
             
@@ -216,81 +215,6 @@ namespace Plugins.GamePilot.Editor.MCP
             catch (Exception)
             {
                 return obj.name;
-            }
-        }
-        
-        private MCPProjectStructure GetProjectStructure()
-        {
-            return new MCPProjectStructure
-            {
-                Scenes = GetScenePaths(),
-                Prefabs = GetPrefabPaths(),
-                Scripts = GetScriptPaths(),
-                Assets = GetAssetPaths()
-            };
-        }
-        
-        private string[] GetScenePaths()
-        {
-            try
-            {
-                return EditorBuildSettings.scenes.Select(s => s.path).ToArray();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[MCP] Error getting scene paths: {ex.Message}");
-                return new string[0];
-            }
-        }
-        
-        private string[] GetPrefabPaths()
-        {
-            try
-            {
-                var guids = AssetDatabase.FindAssets("t:Prefab");
-                return guids.Select(guid => AssetDatabase.GUIDToAssetPath(guid)).ToArray();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[MCP] Error getting prefab paths: {ex.Message}");
-                return new string[0];
-            }
-        }
-        
-        private string[] GetScriptPaths()
-        {
-            try
-            {
-                var guids = AssetDatabase.FindAssets("t:Script");
-                return guids.Select(guid => AssetDatabase.GUIDToAssetPath(guid)).ToArray();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[MCP] Error getting script paths: {ex.Message}");
-                return new string[0];
-            }
-        }
-        
-        private string[] GetAssetPaths()
-        {
-            try
-            {
-                // Get a sampling of important asset types
-                var imageGuids = AssetDatabase.FindAssets("t:Texture2D t:Sprite");
-                var audioGuids = AssetDatabase.FindAssets("t:AudioClip");
-                var materialGuids = AssetDatabase.FindAssets("t:Material");
-                
-                var allGuids = new List<string>();
-                allGuids.AddRange(imageGuids);
-                allGuids.AddRange(audioGuids);
-                allGuids.AddRange(materialGuids);
-                
-                return allGuids.Distinct().Select(guid => AssetDatabase.GUIDToAssetPath(guid)).ToArray();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[MCP] Error getting asset paths: {ex.Message}");
-                return new string[0];
             }
         }
 

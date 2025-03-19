@@ -203,6 +203,80 @@ namespace Plugins.GamePilot.Editor.MCP
             }
         }
         
+        // Add new method to send pong message back to the server
+        public async Task SendPongAsync()
+        {
+            if (!connectionManager.IsConnected) return;
+            
+            try
+            {
+                var message = JsonConvert.SerializeObject(new
+                {
+                    type = "pong",
+                    data = new
+                    {
+                        timestamp = DateTime.UtcNow.Ticks
+                    }
+                });
+                
+                await connectionManager.SendMessageAsync(message);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP] Error sending pong message: {ex.Message}");
+            }
+        }
+        
+        // Add new method to handle single GameObject details request
+        public async Task SendGameObjectDetailsAsync(string requestId, GameObject gameObject)
+        {
+            if (!connectionManager.IsConnected || gameObject == null) return;
+            
+            try
+            {
+                // Create a list with a single game object detail
+                var gameObjectDetail = new MCPGameObjectDetail
+                {
+                    Name = gameObject.name,
+                    InstanceID = gameObject.GetInstanceID(),
+                    Path = GetGameObjectPath(gameObject),
+                    Active = gameObject.activeSelf,
+                    ActiveInHierarchy = gameObject.activeInHierarchy,
+                    Tag = gameObject.tag,
+                    Layer = gameObject.layer,
+                    LayerName = LayerMask.LayerToName(gameObject.layer),
+                    IsStatic = gameObject.isStatic,
+                    Transform = new MCPTransformInfo
+                    {
+                        Position = gameObject.transform.position,
+                        Rotation = gameObject.transform.rotation.eulerAngles,
+                        LocalPosition = gameObject.transform.localPosition,
+                        LocalRotation = gameObject.transform.localRotation.eulerAngles,
+                        LocalScale = gameObject.transform.localScale
+                    },
+                    Components = gameObject.GetComponents<Component>()
+                        .Where(c => c != null)
+                        .Select(c => new MCPComponentInfo
+                        {
+                            Type = c.GetType().Name,
+                            IsEnabled = GetComponentEnabled(c),
+                            InstanceID = c.GetInstanceID()
+                        })
+                        .ToList()
+                };
+                
+                var details = new List<MCPGameObjectDetail> { gameObjectDetail };
+                
+                // Use the existing method to send the details
+                await SendGameObjectsDetailsAsync(requestId, details);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP] Error sending game object details: {ex.Message}");
+                await SendErrorMessageAsync("GAME_OBJECT_DETAIL_ERROR", ex.Message);
+            }
+        }
+        
         private string GetGameObjectPath(GameObject obj)
         {
             if (obj == null) return string.Empty;
