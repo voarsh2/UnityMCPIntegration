@@ -2,7 +2,7 @@
     "name": "com.quaza.unitymcp",
     "version": "0.0.1",
     "displayName": "Package Example",
-    "description": "This is an example package",
+    "description": "Integration between Model Context Protocol (MCP) and Unity, allowing AI assistants to understand and interact with Unity projects in real-time. Provides access to scene hierarchy, project settings, and code execution in the Unity Editor.",
     "unity": "2021.3",
     "dependencies": {
    },
