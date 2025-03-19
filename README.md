@@ -54,10 +54,6 @@ You have several options to install the Unity package:
 3. Select the `UnityMCPIntegration.unitypackage` file
 
 
-**Option C: Manual Installation**
-1. Clone this repository
-2. Copy the `UnityMCPConnection` folder to your Unity project's `Assets` directory
-
 #### 2. Set up the MCP Server
 
 You have two options to run the MCP server:
