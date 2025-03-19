@@ -10,6 +10,12 @@ namespace Plugins.GamePilot.Editor.MCP
     public class MCPDebugWindow : EditorWindow
     {
         [SerializeField]
+        private VisualTreeAsset uxml;
+        [SerializeField]
+        private StyleSheet uss;
+
+
+        [SerializeField]
         private VisualTreeAsset m_VisualTreeAsset = default;
         
         private Label connectionStatusLabel;
@@ -49,28 +55,23 @@ namespace Plugins.GamePilot.Editor.MCP
         {
             VisualElement root = rootVisualElement;
             
-            // Load and clone the visual tree asset
-            var visualTree = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(
-                "Assets/Plugins/GamePilot/UnityMCP/UnityMCPConnection/Editor/UI/MCPDebugWindow.uxml");
             
-            if (visualTree != null)
+            
+            if (uxml != null)
             {
-                visualTree.CloneTree(root);
+                uxml.CloneTree(root);
             }
             else
             {
-                // Fallback if UXML is not found
-                CreateFallbackUI(root);
-                return;
+                Debug.LogError("VisualTreeAsset not found. Please check the path.");
             }
             
-            // Load USS
-            var styleSheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(
-                "Assets/Plugins/GamePilot/UnityMCP/UnityMCPConnection/Editor/UI/MCPDebugWindow.uss");
-            
-            if (styleSheet != null)
+            if (uss != null)
             {
-                root.styleSheets.Add(styleSheet);
+                root.styleSheets.Add(uss);
+            } else
+            {
+                Debug.LogError("StyleSheet not found. Please check the path.");
             }
             
             // Get UI elements
