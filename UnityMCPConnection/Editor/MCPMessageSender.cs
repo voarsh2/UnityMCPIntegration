@@ -96,41 +96,6 @@ namespace Plugins.GamePilot.Editor.MCP
             }
         }
         
-        public async Task SendClientInfoAsync()
-        {
-            if (!connectionManager.IsConnected) return;
-            
-            try
-            {
-                var message = JsonConvert.SerializeObject(new
-                {
-                    type = "clientInfo",
-                    data = new
-                    {
-                        unityVersion = Application.unityVersion,
-                        platform = Application.platform.ToString(),
-                        productName = Application.productName,
-                        clientType = "Unity Editor",
-                        protocolVersion = "1.0.0",
-                        capabilities = new[]
-                        {
-                            "codeExecution",
-                            "sceneNavigation",
-                            "projectInspection",
-                            "gameObjectSelection",
-                            "playModeControl"
-                        }
-                    }
-                });
-                
-                await connectionManager.SendMessageAsync(message);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[MCP] Error sending client info: {ex.Message}");
-            }
-        }
-        
         public async Task SendErrorMessageAsync(string errorCode, string errorMessage)
         {
             if (!connectionManager.IsConnected) return;
@@ -178,79 +143,6 @@ namespace Plugins.GamePilot.Editor.MCP
             catch (Exception ex)
             {
                 Debug.LogError($"[MCP] Error sending logs response: {ex.Message}");
-            }
-        }
-        
-        public async Task SendFileContentAsync(string requestId, string filePath, string content, bool success)
-        {
-            if (!connectionManager.IsConnected) return;
-            
-            try
-            {
-                var message = JsonConvert.SerializeObject(new
-                {
-                    type = "fileContent",
-                    data = new
-                    {
-                        requestId,
-                        filePath,
-                        content,
-                        success,
-                        timestamp = DateTime.UtcNow
-                    }
-                });
-                
-                await connectionManager.SendMessageAsync(message);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[MCP] Error sending file content: {ex.Message}");
-            }
-        }
-        
-        public async Task SendGameObjectDetailsAsync(string requestId, GameObject gameObject)
-        {
-            if (!connectionManager.IsConnected) return;
-            if (gameObject == null) return;
-            
-            try
-            {
-                // Create a detailed representation of the GameObject
-                var details = new 
-                {
-                    name = gameObject.name,
-                    path = GetGameObjectPath(gameObject),
-                    active = gameObject.activeSelf,
-                    activeInHierarchy = gameObject.activeInHierarchy,
-                    tag = gameObject.tag,
-                    layer = gameObject.layer,
-                    layerName = LayerMask.LayerToName(gameObject.layer),
-                    components = gameObject.GetComponents<Component>()
-                        .Where(c => c != null)
-                        .Select(c => new 
-                        {
-                            type = c.GetType().Name,
-                            enabled = GetComponentEnabled(c)
-                        })
-                        .ToArray()
-                };
-                
-                var message = JsonConvert.SerializeObject(new
-                {
-                    type = "gameObjectDetails",
-                    data = new
-                    {
-                        requestId,
-                        gameObject = details,
-                        timestamp = DateTime.UtcNow
-                    }
-                });
-                
-                await connectionManager.SendMessageAsync(message);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[MCP] Error sending GameObject details: {ex.Message}");
             }
         }
         

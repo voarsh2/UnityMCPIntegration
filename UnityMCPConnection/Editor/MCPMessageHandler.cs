@@ -56,14 +56,6 @@ namespace Plugins.GamePilot.Editor.MCP
                         await HandleGetLogsAsync(message.Data);
                         break;
                         
-                    case "getFileContent":
-                        await HandleGetFileContentAsync(message.Data);
-                        break;
-                        
-                    case "getGameObjectDetails":
-                        await HandleGetGameObjectDetailsAsync(message.Data);
-                        break;
-                        
                     case "handshake": // Added to handle server handshake message
                         await HandleHandshakeAsync(message.Data);
                         break;
@@ -229,89 +221,6 @@ namespace Plugins.GamePilot.Editor.MCP
             catch (Exception ex)
             {
                 Debug.LogError($"[MCP] Error getting logs: {ex.Message}");
-            }
-        }
-        
-        private async Task HandleGetFileContentAsync(JToken data)
-        {
-            try
-            {
-                string requestId = data["requestId"]?.ToString() ?? Guid.NewGuid().ToString();
-                string filePath = data["path"]?.ToString();
-                
-                if (string.IsNullOrEmpty(filePath))
-                {
-                    await messageSender.SendErrorMessageAsync("INVALID_PATH", "File path is empty or invalid");
-                    return;
-                }
-                
-                // Ensure path is within the project
-                if (!filePath.StartsWith(Application.dataPath) && !filePath.StartsWith("Assets/"))
-                {
-                    // If path starts with "Assets/", convert to full path
-                    if (filePath.StartsWith("Assets/"))
-                    {
-                        filePath = Path.Combine(Application.dataPath, filePath.Substring(7));
-                    }
-                    else
-                    {
-                        await messageSender.SendErrorMessageAsync("INVALID_PATH", "File path must be within the project");
-                        return;
-                    }
-                }
-                
-                if (!File.Exists(filePath))
-                {
-                    await messageSender.SendFileContentAsync(requestId, filePath, null, false);
-                    return;
-                }
-                
-                string content = File.ReadAllText(filePath);
-                await messageSender.SendFileContentAsync(requestId, filePath, content, true);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[MCP] Error getting file content: {ex.Message}");
-            }
-        }
-        
-        private async Task HandleGetGameObjectDetailsAsync(JToken data)
-        {
-            try
-            {
-                string requestId = data["requestId"]?.ToString() ?? Guid.NewGuid().ToString();
-                string objectPath = data["path"]?.ToString();
-                
-                if (string.IsNullOrEmpty(objectPath))
-                {
-                    // If no path specified, use current selection
-                    var selectedObject = Selection.activeGameObject;
-                    if (selectedObject != null)
-                    {
-                        await messageSender.SendGameObjectDetailsAsync(requestId, selectedObject);
-                    }
-                    else
-                    {
-                        await messageSender.SendErrorMessageAsync("NO_SELECTION", "No GameObject is selected");
-                    }
-                }
-                else
-                {
-                    // Find by path
-                    var obj = GameObject.Find(objectPath);
-                    if (obj != null)
-                    {
-                        await messageSender.SendGameObjectDetailsAsync(requestId, obj);
-                    }
-                    else
-                    {
-                        await messageSender.SendErrorMessageAsync("OBJECT_NOT_FOUND", $"GameObject not found: {objectPath}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[MCP] Error getting GameObject details: {ex.Message}");
             }
         }
         

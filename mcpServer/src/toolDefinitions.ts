@@ -141,34 +141,6 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
         }
       },
       {
-        name: 'find_game_objects',
-        description: 'Find GameObjects in the current scene by name, tag, or component',
-        category: 'Editor Control',
-        tags: ['unity', 'editor', 'gameobjects'],
-        inputSchema: {
-          type: 'object',
-          properties: {
-            nameContains: {
-              type: 'string',
-              description: 'Filter GameObjects by name (case-sensitive)'
-            },
-            tag: {
-              type: 'string',
-              description: 'Filter GameObjects by tag'
-            },
-            componentType: {
-              type: 'string',
-              description: 'Filter GameObjects by component type'
-            }
-          },
-          additionalProperties: false
-        },
-        returns: {
-          type: 'object',
-          description: 'Returns a list of matching GameObjects'
-        }
-      },
-      {
         name: 'verify_connection',
         description: 'Verify that the MCP server has an active connection to Unity Editor',
         category: 'Connection',
@@ -371,59 +343,6 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
           throw new McpError(
             ErrorCode.InternalError,
             `Failed to retrieve logs: ${error instanceof Error ? error.message : 'Unknown error'}`
-          );
-        }
-      }
-
-      case 'find_game_objects': {
-        try {
-          const nameContains = args?.nameContains as string | undefined;
-          const tag = args?.tag as string | undefined;
-          const componentType = args?.componentType as string | undefined;
-
-          // Construct C# code for finding GameObjects based on provided filters
-          let findCode = 'var results = new List<GameObject>();\n';
-          
-          if (tag) {
-            findCode += `var taggedObjects = GameObject.FindGameObjectsWithTag("${tag}");\n`;
-            findCode += 'results.AddRange(taggedObjects);\n';
-          } else {
-            findCode += 'var allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();\n';
-            findCode += 'results.AddRange(allObjects);\n';
-          }
-
-          if (nameContains) {
-            findCode += `results = results.Where(go => go.name.Contains("${nameContains}")).ToList();\n`;
-          }
-
-          if (componentType) {
-            findCode += `results = results.Where(go => go.GetComponent("${componentType}") != null).ToList();\n`;
-          }
-
-          findCode += 'return results.Select(go => go.name).ToArray();';
-
-          // Execute the search code
-          const result = await wsHandler.executeEditorCommand(`
-            using System.Linq;
-            using System.Collections.Generic;
-            using UnityEngine;
-            
-            ${findCode}
-          `);
-
-          return {
-            content: [{
-              type: 'text',
-              text: JSON.stringify({
-                gameObjects: result,
-                count: Array.isArray(result) ? result.length : 0
-              }, null, 2)
-            }]
-          };
-        } catch (error) {
-          throw new McpError(
-            ErrorCode.InternalError,
-            `Failed to find GameObjects: ${error instanceof Error ? error.message : 'Unknown error'}`
           );
         }
       }
