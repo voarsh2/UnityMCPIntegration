@@ -10,7 +10,6 @@
 [![Stars](https://img.shields.io/github/stars/quazaai/UnityMCPIntegration)](https://github.com/quazaai/UnityMCPIntegration/stargazers)
 [![Forks](https://img.shields.io/github/forks/quazaai/UnityMCPIntegration)](https://github.com/quazaai/UnityMCPIntegration/network/members)
 [![License](https://img.shields.io/github/license/quazaai/UnityMCPIntegration)](https://github.com/quazaai/UnityMCPIntegration/blob/main/LICENSE)
-[![Last Commit](https://img.shields.io/github/last-commit/quazaai/UnityMCPIntegration)](https://github.com/quazaai/UnityMCPIntegration/commits/main)
 
 <div align="center">
   <img src="mcpInspector.png" alt="Unity MCP Inspector" width="400" align="right" style="margin-left: 20px; margin-bottom: 20px;"/>
