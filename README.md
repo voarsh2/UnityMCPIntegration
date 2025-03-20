@@ -29,6 +29,9 @@ The Model Context Protocol (MCP) is a standardized protocol that connects AI mod
 - Control the Editor's play mode
 - Browse and manipulate project files directly
 
+
+
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -52,6 +55,7 @@ You have several options to install the Unity package:
 1. Clone this repository or download it as a zip
 2. In Unity, go to `Assets > Import Package > Custom Package`
 3. Select the `UnityMCPIntegration.unitypackage` file
+
 
 
 #### 2. Set up the MCP Server
@@ -89,6 +93,8 @@ Add the server to your MCP Host configuration for Claude Desktop, Custom Impleme
   }
 }
 ```
+### Demo Video
+[![YouTube](http://i.ytimg.com/vi/GxTlahBXs74/hqdefault.jpg)](https://www.youtube.com/watch?v=GxTlahBXs74)
 
 ### 🔧 Usage
 
