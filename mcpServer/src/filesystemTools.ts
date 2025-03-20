@@ -36,10 +36,11 @@ interface TreeEntry {
 }
 
 // Helper functions
-// Updated validatePath function to properly handle empty paths
+// Updated validatePath function to properly handle empty paths and project paths
 async function validatePath(requestedPath: string, assetRootPath: string): Promise<string> {
   // If path is empty or just quotes, use the asset root path directly
   if (!requestedPath || requestedPath.trim() === '' || requestedPath.trim() === '""' || requestedPath.trim() === "''") {
+    console.error(`[Unity MCP] Using asset root path: ${assetRootPath}`);
     return assetRootPath;
   }
   
@@ -60,6 +61,9 @@ async function validatePath(requestedPath: string, assetRootPath: string): Promi
   if (path.isAbsolute(normalized)) {
     absolute = normalized;
     
+    // Log the absolute path for debugging
+    console.error(`[Unity MCP] Absolute path requested: ${absolute}`);
+    
     // Additional check: if the absolute path is outside the project and doesn't exist,
     // try treating it as a relative path first
     if (!absolute.startsWith(assetRootPath)) {
@@ -67,14 +71,29 @@ async function validatePath(requestedPath: string, assetRootPath: string): Promi
       try {
         await fs.access(tryRelative);
         // If we can access it as a relative path, use that instead
+        console.error(`[Unity MCP] Treating as relative path instead: ${tryRelative}`);
         absolute = tryRelative;
       } catch {
-        // If we can't access it as a relative path either, keep the original absolute path
-        // and let the next check handle the potential error
+        // If we can't access it as a relative path either, try to see if it has "Assets" in it
+        if (absolute.includes('Assets')) {
+          // Try to extract the path relative to Assets
+          const assetsIndex = absolute.indexOf('Assets');
+          const relativePath = absolute.substring(assetsIndex + 7); // +7 to skip "Assets/"
+          const newPath = path.join(assetRootPath, relativePath);
+          console.error(`[Unity MCP] Trying to resolve through Assets path: ${newPath}`);
+          
+          try {
+            await fs.access(newPath);
+            absolute = newPath;
+          } catch {
+            // Keep the original path if this approach also fails
+          }
+        }
       }
     }
   } else {
     absolute = path.join(assetRootPath, normalized);
+    console.error(`[Unity MCP] Resolved relative path: ${absolute}`);
   }
     
   const resolvedPath = path.resolve(absolute);
@@ -82,6 +101,9 @@ async function validatePath(requestedPath: string, assetRootPath: string): Promi
   // Ensure we don't escape out of the Unity project folder
   // Special case for empty path: it should always resolve to the project root
   if (!resolvedPath.startsWith(assetRootPath) && requestedPath.trim() !== '') {
+    console.error(`[Unity MCP] Access denied: Path ${requestedPath} is outside the Unity project directory`);
+    console.error(`[Unity MCP] Resolved to: ${resolvedPath}`);
+    console.error(`[Unity MCP] Expected to be within: ${assetRootPath}`);
     throw new Error(`Access denied: Path ${requestedPath} is outside the Unity project directory`);
   }
   

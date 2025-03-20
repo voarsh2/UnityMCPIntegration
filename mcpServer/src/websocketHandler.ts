@@ -32,9 +32,28 @@ export class WebSocketHandler {
   constructor(port: number = 5010) {
     this.port = port;
     
-    // Initialize WebSocket Server
-    this.wsServer = new WebSocketServer({ port });
-    this.setupWebSocketServer();
+    try {
+      // Initialize WebSocket Server
+      this.wsServer = new WebSocketServer({ port });
+      this.setupWebSocketServer();
+      console.error(`[Unity MCP] WebSocket server started on port ${this.port}`);
+    } catch (error) {
+      console.error(`[Unity MCP] ERROR starting WebSocket server on port ${port}:`, error);
+      // Try with a different port if the specified one fails
+      try {
+        const alternativePort = port + 1;
+        console.error(`[Unity MCP] Trying alternative port ${alternativePort}...`);
+        this.port = alternativePort;
+        this.wsServer = new WebSocketServer({ port: alternativePort });
+        this.setupWebSocketServer();
+        console.error(`[Unity MCP] WebSocket server started on alternative port ${this.port}`);
+      } catch (secondError) {
+        console.error(`[Unity MCP] FATAL: Could not start WebSocket server:`, secondError);
+        // Since this is a constructor, we can't use async/await with process.exit
+        // Let the error propagate up to be handled by the caller
+        throw new Error(`Failed to start WebSocket server: ${secondError}`);
+      }
+    }
   }
 
   private setupWebSocketServer() {
@@ -407,15 +426,24 @@ export class WebSocketHandler {
   
   public async close() {
     if (this.unityConnection) {
-      this.unityConnection.close();
+      try {
+        this.unityConnection.close();
+      } catch (error) {
+        console.error('[Unity MCP] Error closing Unity connection:', error);
+      }
       this.unityConnection = null;
     }
     
     return new Promise<void>((resolve) => {
-      this.wsServer.close(() => {
-        console.error('[Unity MCP] WebSocket server closed');
-        resolve();
-      });
+      try {
+        this.wsServer.close(() => {
+          console.error('[Unity MCP] WebSocket server closed');
+          resolve();
+        });
+      } catch (error) {
+        console.error('[Unity MCP] Error closing WebSocket server:', error);
+        resolve(); // Resolve anyway to allow the process to exit
+      }
     });
   }
 }
