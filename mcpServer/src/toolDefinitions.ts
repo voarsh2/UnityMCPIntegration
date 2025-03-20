@@ -65,8 +65,14 @@ export const ListScriptsArgsSchema = z.object({
 });
 
 export function registerTools(server: Server, wsHandler: WebSocketHandler) {
-  // Determine project root path from environment variable or default to parent of Assets folder
+  // Determine project path from environment variable (which now should include 'Assets')
   const projectPath = process.env.UNITY_PROJECT_PATH || path.resolve(process.cwd());
+  const projectRootPath = projectPath.endsWith(`Assets${path.sep}`) 
+    ? projectPath.slice(0, -7) // Remove 'Assets/'
+    : projectPath;
+
+  console.error(`[Unity MCP ToolDefinitions] Using project path: ${projectPath}`);
+  console.error(`[Unity MCP ToolDefinitions] Using project root path: ${projectRootPath}`);
 
   // List all available tools (both Unity and filesystem tools)
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -127,7 +133,7 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
       },
       {
         name: 'execute_editor_command',
-        description: 'Execute C# code directly in the Unity Editor - code is executed immediately in the editor context, not as a MonoBehaviour script',
+        description: 'Execute C# code directly in the Unity Editor - allows full flexibility including custom namespaces and multiple classes',
         category: 'Editor Control',
         tags: ['unity', 'editor', 'command', 'c#'],
         inputSchema: {
@@ -135,7 +141,7 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
           properties: {
             code: {
               type: 'string',
-              description: 'Raw C# code to execute immediately in the Unity Editor. DO NOT include namespace declarations, class definitions or Start/Update methods. Write code that executes directly like a function body. The following namespaces are automatically available: UnityEngine, UnityEditor, System, System.Linq, System.Collections, and System.Collections.Generic. The code should return a value if you want to get results back.',
+              description: 'C# code to execute in Unity Editor. You MUST define a public class named "McpScript" with a public static method named "Execute" that returns an object. Example: "public class McpScript { public static object Execute() { /* your code here */ return result; } }". You can include any necessary namespaces, additional classes, and methods.',
               minLength: 1
             }
           },
@@ -235,7 +241,7 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
       // Filesystem tools - defined alongside Unity tools
       {
         name: "read_file",
-        description: "Read the contents of a file from the Unity project. Paths are relative to the project's Assets folder unless specified as absolute. For example, use 'Scenes/MainScene.unity' to read Assets/Scenes/MainScene.unity.",
+        description: "Read the contents of a file from the Unity project. Paths are relative to the project's Assets folder. For example, use 'Scenes/MainScene.unity' to read Assets/Scenes/MainScene.unity.",
         category: "Filesystem",
         tags: ['unity', 'filesystem', 'file'],
         inputSchema: zodToJsonSchema(ReadFileArgsSchema),

@@ -48,8 +48,13 @@ export const ListScriptsArgsSchema = z.object({
     path: z.string().optional().default("Scripts").describe('Path to look for scripts in. Can be absolute or relative to Unity project Assets folder. If empty, defaults to the Assets/Scripts folder.'),
 });
 export function registerTools(server, wsHandler) {
-    // Determine project root path from environment variable or default to parent of Assets folder
+    // Determine project path from environment variable (which now should include 'Assets')
     const projectPath = process.env.UNITY_PROJECT_PATH || path.resolve(process.cwd());
+    const projectRootPath = projectPath.endsWith(`Assets${path.sep}`)
+        ? projectPath.slice(0, -7) // Remove 'Assets/'
+        : projectPath;
+    console.error(`[Unity MCP ToolDefinitions] Using project path: ${projectPath}`);
+    console.error(`[Unity MCP ToolDefinitions] Using project root path: ${projectRootPath}`);
     // List all available tools (both Unity and filesystem tools)
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
         tools: [
@@ -216,7 +221,7 @@ export function registerTools(server, wsHandler) {
             // Filesystem tools - defined alongside Unity tools
             {
                 name: "read_file",
-                description: "Read the contents of a file from the Unity project. Paths are relative to the project's Assets folder unless specified as absolute. For example, use 'Scenes/MainScene.unity' to read Assets/Scenes/MainScene.unity.",
+                description: "Read the contents of a file from the Unity project. Paths are relative to the project's Assets folder. For example, use 'Scenes/MainScene.unity' to read Assets/Scenes/MainScene.unity.",
                 category: "Filesystem",
                 tags: ['unity', 'filesystem', 'file'],
                 inputSchema: zodToJsonSchema(ReadFileArgsSchema),

@@ -5,6 +5,8 @@ import { WebSocketHandler } from './websocketHandler.js';
 import { registerTools } from './toolDefinitions.js';
 import { registerFilesystemTools } from './filesystemTools.js';
 import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
 class UnityMCPServer {
     server;
     wsHandler;
@@ -19,34 +21,36 @@ class UnityMCPServer {
             },
         });
         // Get port from environment variable or use default
-        // Add port range to try if the default port is taken
         let wsPort = parseInt(process.env.MCP_WEBSOCKET_PORT || '5010');
-        // Determine Unity project path - with improved path sanitization
-        let projectPath = process.env.UNITY_PROJECT_PATH || (() => {
-            // Get the current working directory
-            const cwd = path.resolve(process.cwd());
-            // Find the Assets directory in the path
-            const assetsIndex = cwd.indexOf('Assets');
-            // If Assets is found, truncate the path to include Assets
-            if (assetsIndex !== -1) {
-                return cwd.substring(0, assetsIndex + 'Assets'.length);
-            }
-            // If Assets is not found, return the original path
-            return cwd;
-        })();
+        // Determine Unity project path based on this file's location
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = path.dirname(__filename);
+        // Get the project root path (parent of Assets)
+        let projectRootPath = process.env.UNITY_PROJECT_PATH || this.determineUnityProjectPath(__dirname);
         // Sanitize the path to remove any unexpected characters
-        projectPath = projectPath.replace(/["']/g, '');
+        projectRootPath = projectRootPath.replace(/["']/g, '');
         // Fix potential issue with backslashes being removed
-        projectPath = path.normalize(projectPath);
+        projectRootPath = path.normalize(projectRootPath);
         // Make sure path ends with a directory separator if it's missing
-        if (!projectPath.endsWith(path.sep)) {
-            projectPath += path.sep;
+        if (!projectRootPath.endsWith(path.sep)) {
+            projectRootPath += path.sep;
         }
-        console.error(`[Unity MCP] Using project path: ${projectPath}`);
-        // Set the environment variable for other modules to use
-        process.env.UNITY_PROJECT_PATH = projectPath;
+        console.error(`[Unity MCP] Project root detected as: ${projectRootPath}`);
+        // Create the full path to the Assets folder for filesystem operations
+        const projectPath = path.join(projectRootPath, 'Assets') + path.sep;
+        // Verify the Assets folder exists
+        if (!fs.existsSync(projectPath)) {
+            console.error(`[Unity MCP] WARNING: Assets folder not found at ${projectPath}`);
+            console.error(`[Unity MCP] Using project root instead: ${projectRootPath}`);
+            // If Assets folder doesn't exist, fall back to project root
+            process.env.UNITY_PROJECT_PATH = projectRootPath;
+        }
+        else {
+            console.error(`[Unity MCP] Using project path: ${projectPath}`);
+            // Set the environment variable to include the Assets folder
+            process.env.UNITY_PROJECT_PATH = projectPath;
+        }
         // Initialize WebSocket Handler for Unity communication
-        // It will automatically try different ports if the initial one is taken
         this.wsHandler = new WebSocketHandler(wsPort);
         // Register MCP tools
         registerTools(this.server, this.wsHandler);
@@ -63,6 +67,58 @@ class UnityMCPServer {
             await this.cleanup();
             process.exit(0);
         });
+    }
+    /**
+     * Determine the Unity project path based on the script location
+     * Handles both direct installation in Assets and Package Manager installation
+     */
+    determineUnityProjectPath(scriptDir) {
+        // Normalize the path to ensure consistent separators
+        scriptDir = path.normalize(scriptDir);
+        console.error(`[Unity MCP] Script directory: ${scriptDir}`);
+        // Case 1: Installed in Assets folder
+        // Example: F:/UnityProjects/UnityMCP/Assets/UnityMCPIntegration/mcpServer/src
+        const assetsMatch = /^(.+?[\/\\]Assets)[\/\\].*$/i.exec(scriptDir);
+        if (assetsMatch) {
+            console.error('[Unity MCP] Detected installation in Assets folder');
+            // Return path up to the project root (parent of Assets folder)
+            const projectRoot = path.dirname(assetsMatch[1]); // Get parent of Assets folder
+            console.error(`[Unity MCP] Project root detected as: ${projectRoot}`);
+            return projectRoot;
+        }
+        // Case 2: Installed via Package Manager
+        // Example: F:/UnityProjects/UnityGenAIPlugin/Library/PackageCache/com.quaza.unitymcp@d2b8f1260bca/mcpServer/src
+        const libraryMatch = /^(.+?[\/\\]Library)[\/\\]PackageCache[\/\\].*$/i.exec(scriptDir);
+        if (libraryMatch) {
+            console.error('[Unity MCP] Detected installation via Package Manager');
+            // Extract the path up to Library and replace Library with Assets
+            const projectRoot = path.dirname(libraryMatch[1]); // Get parent of Library folder
+            console.error(`[Unity MCP] Project root detected as: ${projectRoot}`);
+            // Verify that this is really a Unity project by checking for Assets folder
+            const assetsPath = path.join(projectRoot, 'Assets');
+            if (fs.existsSync(assetsPath)) {
+                return projectRoot;
+            }
+            else {
+                console.error(`[Unity MCP] Warning: Assets folder not found at ${assetsPath}`);
+            }
+        }
+        // Try to find Assets folder by walking up directories
+        let currentDir = scriptDir;
+        while (currentDir && path.dirname(currentDir) !== currentDir) {
+            // Check if this directory contains an Assets folder
+            const assetsDir = path.join(currentDir, 'Assets');
+            if (fs.existsSync(assetsDir) && fs.statSync(assetsDir).isDirectory()) {
+                console.error(`[Unity MCP] Found Unity project by locating Assets folder at: ${assetsDir}`);
+                return currentDir;
+            }
+            currentDir = path.dirname(currentDir);
+        }
+        // If we get here, we couldn't determine the project path
+        console.error('[Unity MCP] ERROR: Could not detect Unity project directory.');
+        console.error('[Unity MCP] Please ensure this server is running within a Unity project structure.');
+        console.error('[Unity MCP] Using current directory as fallback, but functionality may be limited.');
+        return process.cwd();
     }
     async cleanup() {
         console.error('Cleaning up resources...');
