@@ -16,6 +16,8 @@ export class WebSocketHandler {
     lastHeartbeat = 0;
     connectionEstablished = false;
     pendingRequests = {};
+    // New connection events
+    connectionCallbacks = [];
     constructor(port = 5010) {
         this.port = port;
         // Initialize WebSocket Server
@@ -37,6 +39,8 @@ export class WebSocketHandler {
             this.lastHeartbeat = Date.now();
             // Send a simple handshake message to verify connection
             this.sendHandshake();
+            // Trigger any pending connection callbacks
+            this.notifyConnectionEstablished();
             ws.on('message', (data) => {
                 try {
                     // Update heartbeat on any message
@@ -67,6 +71,50 @@ export class WebSocketHandler {
                     clearInterval(pingInterval);
                 }
             }, 30000); // Send heartbeat every 30 seconds
+        });
+    }
+    // Notify waiting processes that connection is established
+    notifyConnectionEstablished() {
+        console.error(`[Unity MCP] Connection established, notifying ${this.connectionCallbacks.length} waiting callbacks`);
+        const callbacks = [...this.connectionCallbacks];
+        this.connectionCallbacks = [];
+        for (const callback of callbacks) {
+            try {
+                callback();
+            }
+            catch (error) {
+                console.error('[Unity MCP] Error in connection callback:', error);
+            }
+        }
+    }
+    /**
+     * Wait for Unity to connect for the specified timeout period
+     * @param timeoutMs Maximum time to wait in milliseconds
+     * @returns Promise that resolves to true if connected, false if timed out
+     */
+    waitForConnection(timeoutMs = 60000) {
+        // If already connected, resolve immediately
+        if (this.isConnected()) {
+            console.error('[Unity MCP] Unity is already connected, proceeding immediately');
+            return Promise.resolve(true);
+        }
+        console.error(`[Unity MCP] Waiting up to ${timeoutMs / 1000} seconds for Unity to connect...`);
+        return new Promise((resolve) => {
+            // Set timeout to resolve false if connection doesn't happen in time
+            const timeout = setTimeout(() => {
+                // Remove this callback from the pending list
+                this.connectionCallbacks = this.connectionCallbacks.filter(cb => cb !== callback);
+                console.error('[Unity MCP] Connection wait time exceeded. Unity did not connect.');
+                resolve(false);
+            }, timeoutMs);
+            // Create callback function that will be called when connection is established
+            const callback = () => {
+                clearTimeout(timeout);
+                console.error('[Unity MCP] Unity connected during wait period!');
+                resolve(true);
+            };
+            // Add callback to pending list
+            this.connectionCallbacks.push(callback);
         });
     }
     sendHandshake() {

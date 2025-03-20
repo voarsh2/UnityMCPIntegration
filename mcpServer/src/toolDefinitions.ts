@@ -362,15 +362,29 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
       }
     }
 
-    // For all other tools (Unity-specific), verify connection first
+    // For Unity-specific tools, implement waiting mechanism if disconnected
+    // Define maximum wait time for Unity to connect (in milliseconds)
+    const maxWaitTime = 60000; // 60 seconds
+    
+    // Check if Unity is connected, if not, wait for it to connect
     if (!wsHandler.isConnected()) {
-      throw new McpError(
-        ErrorCode.InternalError,
-        'Unity Editor is not connected. Please first verify the connection using the verify_connection tool, ' +
-        'and ensure the Unity Editor is running with the MCP plugin and that the WebSocket connection is established.'
-      );
+      console.error(`[Unity MCP] Unity not connected. Waiting up to ${maxWaitTime/1000} seconds for connection...`);
+      
+      // Wait for Unity to connect for up to maxWaitTime
+      const connected = await wsHandler.waitForConnection(maxWaitTime);
+      
+      if (!connected) {
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Unity Editor did not connect within ${maxWaitTime/1000} seconds. Please ensure Unity is running ` +
+          `with the MCP plugin. If Unity is compiling scripts, please wait for compilation to complete and try again.`
+        );
+      }
+      
+      console.error('[Unity MCP] Unity connected! Proceeding with tool execution.');
     }
     
+    // Now we can proceed with tool execution as Unity is connected
     switch (name) {
       case 'get_editor_state': {
         try {
