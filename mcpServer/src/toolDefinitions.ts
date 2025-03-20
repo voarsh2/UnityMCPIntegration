@@ -56,17 +56,20 @@ export const GetFileInfoArgsSchema = z.object({
 });
 
 export const FindAssetsByTypeArgsSchema = z.object({
-  assetType: z.string().describe('Type of assets to find (e.g., "Material", "Prefab", "Scene")'),
-  searchPath: z.string().optional().default("Assets").describe('Directory to search in. Can be absolute or relative to Unity project Assets folder. Example: "Materials" will search in Assets/Materials.'),
-});
-
-export const ListScriptsArgsSchema = z.object({
-  path: z.string().optional().default("Scripts").describe('Path to look for scripts in. Can be absolute or relative to Unity project Assets folder. If empty, defaults to the Assets/Scripts folder.'),
+  assetType: z.string().describe('Type of assets to find (e.g., "Material", "Prefab", "Scene", "Script")'),
+  searchPath: z.string().optional().default("").describe('Directory to search in. Can be absolute or relative to Unity project Assets folder. An empty string will search the entire Assets folder.'),
+  maxDepth: z.number().optional().default(1).describe('Maximum depth to search. 1 means search only in the specified directory, 2 includes immediate subdirectories, and so on. Set to -1 for unlimited depth.'),
 });
 
 export function registerTools(server: Server, wsHandler: WebSocketHandler) {
-  // Determine project root path from environment variable or default to parent of Assets folder
+  // Determine project path from environment variable (which now should include 'Assets')
   const projectPath = process.env.UNITY_PROJECT_PATH || path.resolve(process.cwd());
+  const projectRootPath = projectPath.endsWith(`Assets${path.sep}`) 
+    ? projectPath.slice(0, -7) // Remove 'Assets/'
+    : projectPath;
+
+  console.error(`[Unity MCP ToolDefinitions] Using project path: ${projectPath}`);
+  console.error(`[Unity MCP ToolDefinitions] Using project root path: ${projectRootPath}`);
 
   // List all available tools (both Unity and filesystem tools)
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -235,7 +238,7 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
       // Filesystem tools - defined alongside Unity tools
       {
         name: "read_file",
-        description: "Read the contents of a file from the Unity project. Paths are relative to the project's Assets folder unless specified as absolute. For example, use 'Scenes/MainScene.unity' to read Assets/Scenes/MainScene.unity.",
+        description: "Read the contents of a file from the Unity project. Paths are relative to the project's Assets folder. For example, use 'Scenes/MainScene.unity' to read Assets/Scenes/MainScene.unity.",
         category: "Filesystem",
         tags: ['unity', 'filesystem', 'file'],
         inputSchema: zodToJsonSchema(ReadFileArgsSchema),
@@ -291,18 +294,11 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
       },
       {
         name: "find_assets_by_type",
-        description: "Find all Unity assets of a specified type (e.g., Material, Prefab, Script) in the project.",
+        description: "Find all Unity assets of a specified type (e.g., Material, Prefab, Scene, Script) in the project. Set searchPath to an empty string to search the entire Assets folder.",
         category: "Filesystem",
         tags: ['unity', 'filesystem', 'assets', 'search'],
         inputSchema: zodToJsonSchema(FindAssetsByTypeArgsSchema),
       },
-      {
-        name: "list_scripts",
-        description: "List all C# script files in the project, useful for understanding the codebase structure.",
-        category: "Filesystem",
-        tags: ['unity', 'filesystem', 'scripts', 'list'],
-        inputSchema: zodToJsonSchema(ListScriptsArgsSchema),
-      }
     ],
   }));
 
@@ -351,7 +347,7 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
     const filesystemTools = [
       "read_file", "read_multiple_files", "write_file", "edit_file", 
       "list_directory", "directory_tree", "search_files", "get_file_info", 
-      "find_assets_by_type", "list_scripts"
+      "find_assets_by_type"
     ];
     
     if (filesystemTools.includes(name)) {

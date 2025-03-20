@@ -1,0 +1,6 @@
+{
+  "port": 5010,
+  "autoReconnect": false,
+  "globalLoggingEnabled": false,
+  "componentLoggingEnabled": {}
+}

@@ -14,8 +14,8 @@ import {
   DirectoryTreeArgsSchema,
   SearchFilesArgsSchema,
   GetFileInfoArgsSchema,
-  FindAssetsByTypeArgsSchema,
-  ListScriptsArgsSchema
+  FindAssetsByTypeArgsSchema
+  // Remove ListScriptsArgsSchema since it no longer exists in toolDefinitions.ts
 } from './toolDefinitions.js';
 
 // Interface definitions
@@ -278,6 +278,7 @@ function getUnityAssetType(filePath: string): string {
     '.mat': 'Material',
     '.fbx': 'Model',
     '.cs': 'Script',
+    // Remove .js since Unity doesn't support JavaScript scripts
     '.anim': 'Animation',
     '.controller': 'Animator Controller',
     '.asset': 'ScriptableObject',
@@ -497,26 +498,82 @@ export async function handleFilesystemTool(name: string, args: any, projectPath:
         };
       }
       
-      const validPath = await validatePath(parsed.data.searchPath, projectPath);
+      // Clean the inputs by removing quotes
+      const assetType = parsed.data.assetType.replace(/['"]/g, '');
+      const searchPath = parsed.data.searchPath.replace(/['"]/g, '');
+      const maxDepth = parsed.data.maxDepth;
       
-      const results: string[] = [];
-      const targetType = parsed.data.assetType.toLowerCase();
+      console.error(`[Unity MCP] Finding assets of type "${assetType}" in path "${searchPath}" with maxDepth ${maxDepth}`);
       
-      // Recursive function to search for assets
-      async function searchAssets(dir: string) {
-        const entries = await fs.readdir(dir, { withFileTypes: true });
+      const validPath = await validatePath(searchPath, projectPath);
+      
+      const results: Array<{path: string, name: string, type: string}> = [];
+      
+      // Helper function to get the appropriate file extensions for the asset type
+      function getFileExtensionsForType(type: string): string[] {
+        type = type.toLowerCase();
+        const extensionMap: Record<string, string[]> = {
+          'scene': ['.unity'],
+          'prefab': ['.prefab'],
+          'material': ['.mat'],
+          'script': ['.cs'], // Remove .js since Unity doesn't support JavaScript scripts
+          'model': ['.fbx', '.obj', '.blend', '.max', '.mb', '.ma'],
+          'texture': ['.png', '.jpg', '.jpeg', '.tga', '.tif', '.tiff', '.psd', '.exr', '.hdr'],
+          'audio': ['.wav', '.mp3', '.ogg', '.aiff', '.aif'],
+          'animation': ['.anim'],
+          'animator': ['.controller'],
+          'shader': ['.shader', '.compute', '.cginc']
+        };
         
-        for (const entry of entries) {
-          const fullPath = path.join(dir, entry.name);
+        return extensionMap[type] || [];
+      }
+      
+      // Get the extensions to search for
+      const extensions = getFileExtensionsForType(assetType);
+      
+      // Recursive function to search for assets with depth tracking
+      async function searchAssets(dir: string, currentDepth: number = 1) {
+        // Stop recursion if we've reached the maximum depth
+        if (maxDepth !== -1 && currentDepth > maxDepth) {
+          return;
+        }
+        
+        try {
+          const entries = await fs.readdir(dir, { withFileTypes: true });
           
-          if (entry.isDirectory()) {
-            await searchAssets(fullPath);
-          } else {
-            const assetType = getUnityAssetType(fullPath);
-            if (assetType.toLowerCase() === targetType) {
-              results.push(fullPath);
+          for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            const relativePath = path.relative(projectPath, fullPath);
+            
+            if (entry.isDirectory()) {
+              // Recursively search subdirectories
+              await searchAssets(fullPath, currentDepth + 1);
+            } else {
+              // Check if the file matches the requested asset type
+              const ext = path.extname(entry.name).toLowerCase();
+              
+              if (extensions.length === 0) {
+                // If no extensions specified, match by Unity asset type
+                const fileAssetType = getUnityAssetType(fullPath);
+                if (fileAssetType.toLowerCase() === assetType.toLowerCase()) {
+                  results.push({
+                    path: relativePath,
+                    name: entry.name,
+                    type: fileAssetType
+                  });
+                }
+              } else if (extensions.includes(ext)) {
+                // Match by extension
+                results.push({
+                  path: relativePath,
+                  name: entry.name,
+                  type: assetType
+                });
+              }
             }
           }
+        } catch (error) {
+          console.error(`Error accessing directory ${dir}:`, error);
         }
       }
       
@@ -526,53 +583,8 @@ export async function handleFilesystemTool(name: string, args: any, projectPath:
         content: [{ 
           type: "text", 
           text: results.length > 0 
-            ? `Found ${results.length} ${parsed.data.assetType} assets:\n${results.join("\n")}` 
-            : `No ${parsed.data.assetType} assets found` 
-        }],
-      };
-    }
-
-    case "list_scripts": {
-      const parsed = ListScriptsArgsSchema.safeParse(args);
-      if (!parsed.success) {
-        return {
-          content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
-          isError: true
-        };
-      }
-      
-      const validPath = await validatePath(parsed.data.path, projectPath);
-      
-      const scripts: Array<{path: string, name: string}> = [];
-      
-      // Recursive function to find C# scripts
-      async function findScripts(dir: string) {
-        const entries = await fs.readdir(dir, { withFileTypes: true });
-        
-        for (const entry of entries) {
-          const fullPath = path.join(dir, entry.name);
-          
-          if (entry.isDirectory()) {
-            await findScripts(fullPath);
-          } else if (path.extname(entry.name).toLowerCase() === '.cs') {
-            scripts.push({
-              path: fullPath,
-              name: entry.name
-            });
-          }
-        }
-      }
-      
-      await findScripts(validPath);
-      
-      const formattedScripts = scripts.map(s => `${s.name} (${s.path})`).join("\n");
-      
-      return {
-        content: [{ 
-          type: "text", 
-          text: scripts.length > 0 
-            ? `Found ${scripts.length} C# scripts:\n${formattedScripts}` 
-            : "No C# scripts found" 
+            ? `Found ${results.length} ${assetType} assets:\n${JSON.stringify(results, null, 2)}` 
+            : `No "${assetType}" assets found in ${searchPath || "Assets"}` 
         }],
       };
     }

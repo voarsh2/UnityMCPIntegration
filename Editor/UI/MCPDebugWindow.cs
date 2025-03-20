@@ -4,9 +4,20 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using Newtonsoft.Json;
 
 namespace Plugins.GamePilot.Editor.MCP
 {
+    [Serializable]
+    public class MCPDebugSettings
+    {
+        public int port = 5010;
+        public bool autoReconnect = false;
+        public bool globalLoggingEnabled = false;
+        public Dictionary<string, bool> componentLoggingEnabled = new Dictionary<string, bool>();
+    }
+
     public class MCPDebugWindow : EditorWindow
     {
         [SerializeField]
@@ -21,7 +32,6 @@ namespace Plugins.GamePilot.Editor.MCP
         private Button connectButton;
         private Button disconnectButton;
         private Toggle autoReconnectToggle;
-        // Removed serverUrlField completely
         private TextField serverPortField;
         
         // Component logging toggles
@@ -42,12 +52,90 @@ namespace Plugins.GamePilot.Editor.MCP
         private int reconnectAttempts = 0;
         private DateTime? connectionStartTime = null;
         
+        // Settings
+        private MCPDebugSettings settings;
+        private string settingsPath;
+        
         [MenuItem("Window/MCP Debug")]
         public static void ShowWindow()
         {
             MCPDebugWindow wnd = GetWindow<MCPDebugWindow>();
             wnd.titleContent = new GUIContent("MCP Debug");
             wnd.minSize = new Vector2(400, 500);
+        }
+
+        private void OnEnable()
+        {
+            // Get the path to save settings
+            settingsPath = GetSettingsPath();
+            
+            // Load or create settings
+            LoadSettings();
+        }
+
+        private string GetSettingsPath()
+        {
+            // Get the script location
+            var script = MonoScript.FromScriptableObject(this);
+            var scriptPath = AssetDatabase.GetAssetPath(script);
+            var directoryPath = Path.GetDirectoryName(scriptPath);
+            
+            // Create settings path in the same directory
+            return Path.Combine(directoryPath, "MCPDebugSettings.json");
+        }
+
+        private void LoadSettings()
+        {
+            settings = new MCPDebugSettings();
+            
+            try
+            {
+                // Check if settings file exists
+                if (File.Exists(settingsPath))
+                {
+                    string json = File.ReadAllText(settingsPath);
+                    settings = JsonConvert.DeserializeObject<MCPDebugSettings>(json);
+                    
+                    Debug.Log($"[MCP] [MCPDebugWindow] Loaded settings from {settingsPath}");
+                }
+                else
+                {
+                    // Create default settings
+                    settings = new MCPDebugSettings();
+                    SaveSettings();
+                    Debug.Log($"[MCP] [MCPDebugWindow] Created default settings at {settingsPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP] [MCPDebugWindow] Error loading settings: {ex.Message}");
+                settings = new MCPDebugSettings();
+            }
+            
+            // Apply settings to MCPLogger
+            MCPLogger.GlobalLoggingEnabled = settings.globalLoggingEnabled;
+            
+            // Apply component logging settings
+            foreach (var pair in settings.componentLoggingEnabled)
+            {
+                MCPLogger.SetComponentLoggingEnabled(pair.Key, pair.Value);
+            }
+        }
+
+        private void SaveSettings()
+        {
+            try
+            {
+                // Save settings using Newtonsoft.Json which supports dictionaries directly
+                string json = JsonConvert.SerializeObject(settings, Formatting.Indented);
+                File.WriteAllText(settingsPath, json);
+                
+                Debug.Log($"[MCP] [MCPDebugWindow] Saved settings to {settingsPath}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP] [MCPDebugWindow] Error saving settings: {ex.Message}");
+            }
         }
 
         public void CreateGUI()
@@ -85,16 +173,15 @@ namespace Plugins.GamePilot.Editor.MCP
             messagesReceivedLabel = root.Q<Label>("messages-received-value");
             reconnectAttemptsLabel = root.Q<Label>("reconnect-attempts-value");
             
-            // Set default port if empty
-            if (serverPortField != null && string.IsNullOrWhiteSpace(serverPortField.value))
-            {
-                serverPortField.value = "5010";
-            }
+            // Apply settings to UI
+            serverPortField.value = settings.port.ToString();
+            autoReconnectToggle.value = settings.autoReconnect;
             
             // Setup UI events
             connectButton.clicked += OnConnectClicked;
             disconnectButton.clicked += OnDisconnectClicked;
             autoReconnectToggle.RegisterValueChangedCallback(OnAutoReconnectChanged);
+            serverPortField.RegisterValueChangedCallback(OnPortChanged);
             
             // Setup component logging toggles
             SetupComponentLoggingToggles(root);
@@ -104,6 +191,15 @@ namespace Plugins.GamePilot.Editor.MCP
             
             // Register for updates
             EditorApplication.update += OnEditorUpdate;
+        }
+        
+        private void OnPortChanged(ChangeEvent<string> evt)
+        {
+            if (int.TryParse(evt.newValue, out int port) && port >= 1 && port <= 65535)
+            {
+                settings.port = port;
+                SaveSettings();
+            }
         }
         
         private void CreateFallbackUI(VisualElement root)
@@ -135,13 +231,16 @@ namespace Plugins.GamePilot.Editor.MCP
             var loggingContainer = root.Q<VisualElement>("logging-container");
             
             // Register MCPDebugWindow as a component for logging
-            MCPLogger.InitializeComponent("MCPDebugWindow", false);
+            MCPLogger.InitializeComponent("MCPDebugWindow", settings.componentLoggingEnabled.ContainsKey("MCPDebugWindow") ? 
+                settings.componentLoggingEnabled["MCPDebugWindow"] : false);
             
             // Global logging toggle
             var globalToggle = new Toggle("Enable All Logging");
-            globalToggle.value = MCPLogger.GlobalLoggingEnabled;
+            globalToggle.value = settings.globalLoggingEnabled;
             globalToggle.RegisterValueChangedCallback(evt => {
+                settings.globalLoggingEnabled = evt.newValue;
                 MCPLogger.GlobalLoggingEnabled = evt.newValue;
+                SaveSettings();
                 
                 // First make sure all components are properly initialized before updating UI
                 EnsureComponentsInitialized();
@@ -182,7 +281,10 @@ namespace Plugins.GamePilot.Editor.MCP
             
             foreach (string componentName in standardComponents)
             {
-                CreateLoggingToggle(loggingContainer, componentName, $"Enable {componentName} logging");
+                bool isEnabled = settings.componentLoggingEnabled.ContainsKey(componentName) ? 
+                    settings.componentLoggingEnabled[componentName] : false;
+                    
+                CreateLoggingToggle(loggingContainer, componentName, $"Enable {componentName} logging", isEnabled);
             }
             
             // Add any additional registered components not in our standard list
@@ -190,7 +292,10 @@ namespace Plugins.GamePilot.Editor.MCP
             {
                 if (!logToggles.ContainsKey(componentName))
                 {
-                    CreateLoggingToggle(loggingContainer, componentName, $"Enable {componentName} logging");
+                    bool isEnabled = settings.componentLoggingEnabled.ContainsKey(componentName) ? 
+                        settings.componentLoggingEnabled[componentName] : false;
+                        
+                    CreateLoggingToggle(loggingContainer, componentName, $"Enable {componentName} logging", isEnabled);
                 }
             }
         }
@@ -214,10 +319,10 @@ namespace Plugins.GamePilot.Editor.MCP
             }
         }
         
-        private void CreateLoggingToggle(VisualElement container, string componentName, string label)
+        private void CreateLoggingToggle(VisualElement container, string componentName, string label, bool initialValue)
         {
             var toggle = new Toggle(label);
-            toggle.value = MCPLogger.GetComponentLoggingEnabled(componentName);
+            toggle.value = initialValue;
             
             // Make all toggles interactive, they'll work based on global enabled state
             toggle.SetEnabled(true);
@@ -230,6 +335,8 @@ namespace Plugins.GamePilot.Editor.MCP
         private void OnLoggingToggleChanged(string componentName, bool enabled)
         {
             MCPLogger.SetComponentLoggingEnabled(componentName, enabled);
+            settings.componentLoggingEnabled[componentName] = enabled;
+            SaveSettings();
         }
         
         private void OnConnectClicked()
@@ -254,6 +361,10 @@ namespace Plugins.GamePilot.Editor.MCP
                     "Please enter a valid port number between 1 and 65535.", "OK");
                 return;
             }
+            
+            // Save the port setting
+            settings.port = port;
+            SaveSettings();
             
             try {
                 // Create the WebSocket URL with the specified port
@@ -312,6 +423,9 @@ namespace Plugins.GamePilot.Editor.MCP
         
         private void OnAutoReconnectChanged(ChangeEvent<bool> evt)
         {
+            settings.autoReconnect = evt.newValue;
+            SaveSettings();
+            
             if (MCPManager.IsInitialized)
             {
                 MCPManager.EnableAutoReconnect(evt.newValue);
@@ -438,6 +552,9 @@ namespace Plugins.GamePilot.Editor.MCP
         {
             // Unregister from editor updates
             EditorApplication.update -= OnEditorUpdate;
+            
+            // Save settings one last time when window is closed
+            SaveSettings();
         }
     }
 }
