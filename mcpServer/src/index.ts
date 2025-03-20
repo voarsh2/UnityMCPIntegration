@@ -3,6 +3,8 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { WebSocketHandler } from './websocketHandler.js';
 import { registerTools } from './toolDefinitions.js';
+import { registerFilesystemTools } from './filesystemTools.js';
+import path from 'path';
 
 class UnityMCPServer {
   private server: Server;
@@ -13,7 +15,7 @@ class UnityMCPServer {
     this.server = new Server(
       {
         name: 'unity-mcp-server',
-        version: '0.1.0',
+        version: '0.2.0',
       },
       {
         capabilities: {
@@ -22,15 +24,59 @@ class UnityMCPServer {
       }
     );
 
+    // Get port from environment variable or use default
+    // Add port range to try if the default port is taken
+    let wsPort = parseInt(process.env.MCP_WEBSOCKET_PORT || '5010');
+    
+    // Determine Unity project path - with improved path sanitization
+    let projectPath = process.env.UNITY_PROJECT_PATH || (() => {
+      // Get the current working directory
+      const cwd = path.resolve(process.cwd());
+      // Find the Assets directory in the path
+      const assetsIndex = cwd.indexOf('Assets');
+      // If Assets is found, truncate the path to include Assets
+      if (assetsIndex !== -1) {
+        return cwd.substring(0, assetsIndex + 'Assets'.length);
+      }
+      // If Assets is not found, return the original path
+      return cwd;
+    })();
+    
+    // Sanitize the path to remove any unexpected characters
+    projectPath = projectPath.replace(/["']/g, '');
+    
+    // Fix potential issue with backslashes being removed
+    projectPath = path.normalize(projectPath);
+    
+    // Make sure path ends with a directory separator if it's missing
+    if (!projectPath.endsWith(path.sep)) {
+      projectPath += path.sep;
+    }
+    
+    console.error(`[Unity MCP] Using project path: ${projectPath}`);
+    
+    // Set the environment variable for other modules to use
+    process.env.UNITY_PROJECT_PATH = projectPath;
+    
     // Initialize WebSocket Handler for Unity communication
-    this.wsHandler = new WebSocketHandler(8080);
+    // It will automatically try different ports if the initial one is taken
+    this.wsHandler = new WebSocketHandler(wsPort);
 
     // Register MCP tools
     registerTools(this.server, this.wsHandler);
+    
+    // Register filesystem tools to access Unity project files
+    registerFilesystemTools(this.server, this.wsHandler);
 
     // Error handling
     this.server.onerror = (error) => console.error('[MCP Error]', error);
     process.on('SIGINT', async () => {
+      await this.cleanup();
+      process.exit(0);
+    });
+    
+    // Also handle SIGTERM for clean Docker container shutdown
+    process.on('SIGTERM', async () => {
       await this.cleanup();
       process.exit(0);
     });
@@ -47,6 +93,7 @@ class UnityMCPServer {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
     console.error('[Unity MCP] Server running and ready to accept connections');
+    console.error('[Unity MCP] WebSocket server listening on port', this.wsHandler.port);
   }
 }
 

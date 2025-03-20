@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 export class WebSocketHandler {
     wsServer;
+    port;
     unityConnection = null;
     editorState = {
         activeGameObjects: [],
@@ -15,13 +16,14 @@ export class WebSocketHandler {
     lastHeartbeat = 0;
     connectionEstablished = false;
     pendingRequests = {};
-    constructor(port = 8080) {
+    constructor(port = 5010) {
+        this.port = port;
         // Initialize WebSocket Server
         this.wsServer = new WebSocketServer({ port });
         this.setupWebSocketServer();
     }
     setupWebSocketServer() {
-        console.error('[Unity MCP] WebSocket server starting on port 8080');
+        console.error(`[Unity MCP] WebSocket server starting on port ${this.port}`);
         this.wsServer.on('listening', () => {
             console.error('[Unity MCP] WebSocket server is listening for connections');
         });
@@ -81,7 +83,7 @@ export class WebSocketHandler {
             console.error('[Unity MCP] Error sending handshake:', error);
         }
     }
-    // Rename from sendHeartbeat to sendPing for consistency with protocol
+    // Renamed from sendHeartbeat to sendPing for consistency with protocol
     sendPing() {
         try {
             if (this.unityConnection && this.unityConnection.readyState === WebSocket.OPEN) {
@@ -134,7 +136,8 @@ export class WebSocketHandler {
                 }
                 break;
             default:
-                console.error('[Unity MCP] Unknown message type:', message.type);
+                console.error('[Unity MCP] Unknown message type:');
+                break;
         }
     }
     addLogEntry(logEntry) {
@@ -152,10 +155,12 @@ export class WebSocketHandler {
             // Start timing the command execution
             this.commandStartTime = Date.now();
             // Send the command to Unity
-            this.unityConnection.send(JSON.stringify({
-                type: 'executeEditorCommand',
-                data: { code }
-            }));
+            if (this.unityConnection) {
+                this.unityConnection.send(JSON.stringify({
+                    type: 'executeEditorCommand',
+                    data: { code }
+                }));
+            }
             // Wait for result with timeout
             return await Promise.race([
                 new Promise((resolve, reject) => {
@@ -230,7 +235,7 @@ export class WebSocketHandler {
         return true;
     }
     requestEditorState() {
-        if (!this.isConnected()) {
+        if (!this.isConnected() || !this.unityConnection) {
             return;
         }
         try {
@@ -245,7 +250,7 @@ export class WebSocketHandler {
         }
     }
     async requestSceneInfo(detailLevel) {
-        if (!this.isConnected()) {
+        if (!this.isConnected() || !this.unityConnection) {
             throw new Error('Unity Editor is not connected');
         }
         const requestId = crypto.randomUUID();
@@ -275,7 +280,7 @@ export class WebSocketHandler {
         return responsePromise;
     }
     async requestGameObjectsInfo(instanceIDs, detailLevel) {
-        if (!this.isConnected()) {
+        if (!this.isConnected() || !this.unityConnection) {
             throw new Error('Unity Editor is not connected');
         }
         const requestId = crypto.randomUUID();
@@ -304,6 +309,23 @@ export class WebSocketHandler {
             }
         }));
         return responsePromise;
+    }
+    // Support for file system tools by adding a method to send generic messages
+    async sendMessage(message) {
+        if (this.unityConnection && this.unityConnection.readyState === WebSocket.OPEN) {
+            const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
+            return new Promise((resolve, reject) => {
+                this.unityConnection.send(messageStr, (err) => {
+                    if (err) {
+                        reject(err);
+                    }
+                    else {
+                        resolve();
+                    }
+                });
+            });
+        }
+        return Promise.resolve();
     }
     async close() {
         if (this.unityConnection) {

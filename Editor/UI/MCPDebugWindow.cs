@@ -88,7 +88,7 @@ namespace Plugins.GamePilot.Editor.MCP
             // Set default port if empty
             if (serverPortField != null && string.IsNullOrWhiteSpace(serverPortField.value))
             {
-                serverPortField.value = "8080";
+                serverPortField.value = "5010";
             }
             
             // Setup UI events
@@ -113,7 +113,7 @@ namespace Plugins.GamePilot.Editor.MCP
             
             // Removed serverUrlField - only using port field as requested
             
-            serverPortField = new TextField("Port (Default: 8080)") { value = "8080" };
+            serverPortField = new TextField("Port (Default: 5010)") { value = "5010" };
             root.Add(serverPortField);
             
             var connectButton = new Button(OnConnectClicked) { text = "Connect" };
@@ -240,10 +240,10 @@ namespace Plugins.GamePilot.Editor.MCP
             // Get the server port from the text field
             string portText = serverPortField.value;
             
-            // If port is empty, default to 8080
+            // If port is empty, default to 5010
             if (string.IsNullOrWhiteSpace(portText))
             {
-                portText = "8080";
+                portText = "5010";
                 serverPortField.value = portText;
             }
             
