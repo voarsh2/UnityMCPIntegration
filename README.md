@@ -52,7 +52,7 @@ You have several options to install the Unity package:
 4. Click `Add`
 
 **Option B: Import Custom Package**
-1. Clone this repository or download it as a zip
+1. Clone this repository or [download it as a unityPackage](https://github.com/quazaai/UnityMCPIntegration/releases)
 2. In Unity, go to `Assets > Import Package > Custom Package`
 3. Select the `UnityMCPIntegration.unitypackage` file
 
