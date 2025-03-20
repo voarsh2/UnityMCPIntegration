@@ -80,10 +80,10 @@ Add the server to your MCP Host configuration for Claude Desktop, Custom Impleme
     "unity-mcp-server": {
       "command": "node",
       "args": [
-        "<path-to-project>/mcpServer/build/index.js"
+        "path-to-project>\\Library\\PackageCache\\com.quaza.unitymcp@d2b8f1260bca\\mcpServer\\mcpServer\\build\\index.js"
       ],
       "env": {
-        "UNITY_PROJECT_PATH": "<path-to-your-unity-project>/Assets"
+        "MCP_WEBSOCKET_PORT": "5010"
       }
     }
   }
