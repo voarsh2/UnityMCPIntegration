@@ -41,11 +41,9 @@ export const GetFileInfoArgsSchema = z.object({
     path: z.string().describe('Path to the file to get info for. Can be absolute or relative to Unity project Assets folder. If empty, defaults to the Assets folder.'),
 });
 export const FindAssetsByTypeArgsSchema = z.object({
-    assetType: z.string().describe('Type of assets to find (e.g., "Material", "Prefab", "Scene")'),
-    searchPath: z.string().optional().default("Assets").describe('Directory to search in. Can be absolute or relative to Unity project Assets folder. Example: "Materials" will search in Assets/Materials.'),
-});
-export const ListScriptsArgsSchema = z.object({
-    path: z.string().optional().default("Scripts").describe('Path to look for scripts in. Can be absolute or relative to Unity project Assets folder. If empty, defaults to the Assets/Scripts folder.'),
+    assetType: z.string().describe('Type of assets to find (e.g., "Material", "Prefab", "Scene", "Script")'),
+    searchPath: z.string().optional().default("").describe('Directory to search in. Can be absolute or relative to Unity project Assets folder. An empty string will search the entire Assets folder.'),
+    maxDepth: z.number().optional().default(1).describe('Maximum depth to search. 1 means search only in the specified directory, 2 includes immediate subdirectories, and so on. Set to -1 for unlimited depth.'),
 });
 export function registerTools(server, wsHandler) {
     // Determine project path from environment variable (which now should include 'Assets')
@@ -277,18 +275,11 @@ export function registerTools(server, wsHandler) {
             },
             {
                 name: "find_assets_by_type",
-                description: "Find all Unity assets of a specified type (e.g., Material, Prefab, Script) in the project.",
+                description: "Find all Unity assets of a specified type (e.g., Material, Prefab, Scene, Script) in the project. Set searchPath to an empty string to search the entire Assets folder.",
                 category: "Filesystem",
                 tags: ['unity', 'filesystem', 'assets', 'search'],
                 inputSchema: zodToJsonSchema(FindAssetsByTypeArgsSchema),
             },
-            {
-                name: "list_scripts",
-                description: "List all C# script files in the project, useful for understanding the codebase structure.",
-                category: "Filesystem",
-                tags: ['unity', 'filesystem', 'scripts', 'list'],
-                inputSchema: zodToJsonSchema(ListScriptsArgsSchema),
-            }
         ],
     }));
     // Handle tool calls
@@ -333,7 +324,7 @@ export function registerTools(server, wsHandler) {
         const filesystemTools = [
             "read_file", "read_multiple_files", "write_file", "edit_file",
             "list_directory", "directory_tree", "search_files", "get_file_info",
-            "find_assets_by_type", "list_scripts"
+            "find_assets_by_type"
         ];
         if (filesystemTools.includes(name)) {
             try {
