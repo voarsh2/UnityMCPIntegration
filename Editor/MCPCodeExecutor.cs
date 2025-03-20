@@ -44,39 +44,22 @@ namespace Plugins.GamePilot.Editor.MCP
 
         private object ExecuteCommand(string code)
         {
-            // Create a method that wraps the code
-            string wrappedCode = $@"
-                using UnityEngine;
-                using UnityEditor;
-                using System;
-                using System.Linq;
-                using System.Collections;
-                using System.Collections.Generic;
-
-                public class CodeExecutor
-                {{
-                    public static object Execute()
-                    {{
-                        {code}
-                        return ""Success"";
-                    }}
-                }}
-            ";
-
-            // Use a simpler set of compiler parameters to avoid conflicts
-            var options = new CompilerParameters
-            {
-                GenerateInMemory = true,
-                IncludeDebugInformation = true
-            };
-            
-            // Add only essential references
-            AddEssentialReferences(options);
-            
-            // Compile and execute
+            // The code should define a class called "McpScript" with a static method "Execute"
+            // Less restrictive on what the code can contain (namespaces, classes, etc.)
             using (var provider = new CSharpCodeProvider())
             {
-                var results = provider.CompileAssemblyFromSource(options, wrappedCode);
+                var options = new CompilerParameters
+                {
+                    GenerateInMemory = true,
+                    IncludeDebugInformation = true
+                };
+                
+                // Add essential references
+                AddEssentialReferences(options);
+                
+                // Compile the code as provided - with no wrapping
+                var results = provider.CompileAssemblyFromSource(options, code);
+                
                 if (results.Errors.HasErrors)
                 {
                     var errorMessages = new List<string>();
@@ -87,18 +70,18 @@ namespace Plugins.GamePilot.Editor.MCP
                     throw new Exception("Compilation failed: " + string.Join("\n", errorMessages));
                 }
 
-                // Get the compiled assembly and execute the code
+                // Get the compiled assembly and execute the code via the McpScript.Execute method
                 var assembly = results.CompiledAssembly;
-                var type = assembly.GetType("CodeExecutor");
+                var type = assembly.GetType("McpScript");
                 if (type == null)
                 {
-                    throw new Exception("Could not find CodeExecutor type in compiled assembly");
+                    throw new Exception("Could not find McpScript class in compiled assembly. Make sure your code defines a public class named 'McpScript'.");
                 }
                 
                 var method = type.GetMethod("Execute");
                 if (method == null)
                 {
-                    throw new Exception("Could not find Execute method in compiled assembly");
+                    throw new Exception("Could not find Execute method in McpScript class. Make sure your code includes a public static method named 'Execute'.");
                 }
                 
                 return method.Invoke(null, null);
@@ -133,6 +116,11 @@ namespace Plugins.GamePilot.Editor.MCP
                 
                 // Add essential Unity modules
                 AddUnityModule(options, "UnityEngine.CoreModule");
+                AddUnityModule(options, "UnityEngine.PhysicsModule");
+                AddUnityModule(options, "UnityEngine.UIModule");
+                AddUnityModule(options, "UnityEngine.InputModule");
+                AddUnityModule(options, "UnityEngine.AnimationModule");
+                AddUnityModule(options, "UnityEngine.IMGUIModule");
             }
             catch (Exception ex)
             {

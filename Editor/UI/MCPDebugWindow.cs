@@ -4,11 +4,27 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using Newtonsoft.Json;
 
 namespace Plugins.GamePilot.Editor.MCP
 {
+    [Serializable]
+    public class MCPDebugSettings
+    {
+        public int port = 5010;
+        public bool autoReconnect = false;
+        public bool globalLoggingEnabled = false;
+        public Dictionary<string, bool> componentLoggingEnabled = new Dictionary<string, bool>();
+    }
+
     public class MCPDebugWindow : EditorWindow
     {
+        [SerializeField]
+        private VisualTreeAsset uxml;
+        [SerializeField]
+        private StyleSheet uss;
+
         [SerializeField]
         private VisualTreeAsset m_VisualTreeAsset = default;
         
@@ -16,7 +32,6 @@ namespace Plugins.GamePilot.Editor.MCP
         private Button connectButton;
         private Button disconnectButton;
         private Toggle autoReconnectToggle;
-        private TextField serverUrlField;
         private TextField serverPortField;
         
         // Component logging toggles
@@ -37,6 +52,10 @@ namespace Plugins.GamePilot.Editor.MCP
         private int reconnectAttempts = 0;
         private DateTime? connectionStartTime = null;
         
+        // Settings
+        private MCPDebugSettings settings;
+        private string settingsPath;
+        
         [MenuItem("Window/MCP Debug")]
         public static void ShowWindow()
         {
@@ -45,32 +64,99 @@ namespace Plugins.GamePilot.Editor.MCP
             wnd.minSize = new Vector2(400, 500);
         }
 
+        private void OnEnable()
+        {
+            // Get the path to save settings
+            settingsPath = GetSettingsPath();
+            
+            // Load or create settings
+            LoadSettings();
+        }
+
+        private string GetSettingsPath()
+        {
+            // Get the script location
+            var script = MonoScript.FromScriptableObject(this);
+            var scriptPath = AssetDatabase.GetAssetPath(script);
+            var directoryPath = Path.GetDirectoryName(scriptPath);
+            
+            // Create settings path in the same directory
+            return Path.Combine(directoryPath, "MCPDebugSettings.json");
+        }
+
+        private void LoadSettings()
+        {
+            settings = new MCPDebugSettings();
+            
+            try
+            {
+                // Check if settings file exists
+                if (File.Exists(settingsPath))
+                {
+                    string json = File.ReadAllText(settingsPath);
+                    settings = JsonConvert.DeserializeObject<MCPDebugSettings>(json);
+                    
+                    Debug.Log($"[MCP] [MCPDebugWindow] Loaded settings from {settingsPath}");
+                }
+                else
+                {
+                    // Create default settings
+                    settings = new MCPDebugSettings();
+                    SaveSettings();
+                    Debug.Log($"[MCP] [MCPDebugWindow] Created default settings at {settingsPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP] [MCPDebugWindow] Error loading settings: {ex.Message}");
+                settings = new MCPDebugSettings();
+            }
+            
+            // Apply settings to MCPLogger
+            MCPLogger.GlobalLoggingEnabled = settings.globalLoggingEnabled;
+            
+            // Apply component logging settings
+            foreach (var pair in settings.componentLoggingEnabled)
+            {
+                MCPLogger.SetComponentLoggingEnabled(pair.Key, pair.Value);
+            }
+        }
+
+        private void SaveSettings()
+        {
+            try
+            {
+                // Save settings using Newtonsoft.Json which supports dictionaries directly
+                string json = JsonConvert.SerializeObject(settings, Formatting.Indented);
+                File.WriteAllText(settingsPath, json);
+                
+                Debug.Log($"[MCP] [MCPDebugWindow] Saved settings to {settingsPath}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[MCP] [MCPDebugWindow] Error saving settings: {ex.Message}");
+            }
+        }
+
         public void CreateGUI()
         {
             VisualElement root = rootVisualElement;
             
-            // Load and clone the visual tree asset
-            var visualTree = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(
-                "Assets/Plugins/GamePilot/UnityMCP/UnityMCPConnection/Editor/UI/MCPDebugWindow.uxml");
-            
-            if (visualTree != null)
+            if (uxml != null)
             {
-                visualTree.CloneTree(root);
+                uxml.CloneTree(root);
             }
             else
             {
-                // Fallback if UXML is not found
-                CreateFallbackUI(root);
-                return;
+                Debug.LogError("VisualTreeAsset not found. Please check the path.");
             }
             
-            // Load USS
-            var styleSheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(
-                "Assets/Plugins/GamePilot/UnityMCP/UnityMCPConnection/Editor/UI/MCPDebugWindow.uss");
-            
-            if (styleSheet != null)
+            if (uss != null)
             {
-                root.styleSheets.Add(styleSheet);
+                root.styleSheets.Add(uss);
+            } else
+            {
+                Debug.LogError("StyleSheet not found. Please check the path.");
             }
             
             // Get UI elements
@@ -78,7 +164,6 @@ namespace Plugins.GamePilot.Editor.MCP
             connectButton = root.Q<Button>("connect-button");
             disconnectButton = root.Q<Button>("disconnect-button");
             autoReconnectToggle = root.Q<Toggle>("auto-reconnect-toggle");
-            serverUrlField = root.Q<TextField>("server-url-field");
             serverPortField = root.Q<TextField>("server-port-field");
             
             lastErrorLabel = root.Q<Label>("last-error-value");
@@ -88,22 +173,15 @@ namespace Plugins.GamePilot.Editor.MCP
             messagesReceivedLabel = root.Q<Label>("messages-received-value");
             reconnectAttemptsLabel = root.Q<Label>("reconnect-attempts-value");
             
-            // Set default URL if empty
-            if (string.IsNullOrWhiteSpace(serverUrlField.value))
-            {
-                serverUrlField.value = "ws://localhost:8080";
-            }
-            
-            // Set default port if empty
-            if (string.IsNullOrWhiteSpace(serverPortField.value))
-            {
-                serverPortField.value = "8080";
-            }
+            // Apply settings to UI
+            serverPortField.value = settings.port.ToString();
+            autoReconnectToggle.value = settings.autoReconnect;
             
             // Setup UI events
             connectButton.clicked += OnConnectClicked;
             disconnectButton.clicked += OnDisconnectClicked;
             autoReconnectToggle.RegisterValueChangedCallback(OnAutoReconnectChanged);
+            serverPortField.RegisterValueChangedCallback(OnPortChanged);
             
             // Setup component logging toggles
             SetupComponentLoggingToggles(root);
@@ -115,15 +193,23 @@ namespace Plugins.GamePilot.Editor.MCP
             EditorApplication.update += OnEditorUpdate;
         }
         
+        private void OnPortChanged(ChangeEvent<string> evt)
+        {
+            if (int.TryParse(evt.newValue, out int port) && port >= 1 && port <= 65535)
+            {
+                settings.port = port;
+                SaveSettings();
+            }
+        }
+        
         private void CreateFallbackUI(VisualElement root)
         {
             // Create a simple fallback UI if UXML fails to load
             root.Add(new Label("MCP Debug Window - UXML not found") { style = { fontSize = 16, marginBottom = 10 } });
             
-            serverUrlField = new TextField("Server URL") { value = "ws://localhost:8080" };
-            root.Add(serverUrlField);
+            // Removed serverUrlField - only using port field as requested
             
-            serverPortField = new TextField("Port Default: 8080)") { value = "8080" };
+            serverPortField = new TextField("Port (Default: 5010)") { value = "5010" };
             root.Add(serverPortField);
             
             var connectButton = new Button(OnConnectClicked) { text = "Connect" };
@@ -145,13 +231,16 @@ namespace Plugins.GamePilot.Editor.MCP
             var loggingContainer = root.Q<VisualElement>("logging-container");
             
             // Register MCPDebugWindow as a component for logging
-            MCPLogger.InitializeComponent("MCPDebugWindow", false);
+            MCPLogger.InitializeComponent("MCPDebugWindow", settings.componentLoggingEnabled.ContainsKey("MCPDebugWindow") ? 
+                settings.componentLoggingEnabled["MCPDebugWindow"] : false);
             
             // Global logging toggle
             var globalToggle = new Toggle("Enable All Logging");
-            globalToggle.value = MCPLogger.GlobalLoggingEnabled;
+            globalToggle.value = settings.globalLoggingEnabled;
             globalToggle.RegisterValueChangedCallback(evt => {
+                settings.globalLoggingEnabled = evt.newValue;
                 MCPLogger.GlobalLoggingEnabled = evt.newValue;
+                SaveSettings();
                 
                 // First make sure all components are properly initialized before updating UI
                 EnsureComponentsInitialized();
@@ -192,7 +281,10 @@ namespace Plugins.GamePilot.Editor.MCP
             
             foreach (string componentName in standardComponents)
             {
-                CreateLoggingToggle(loggingContainer, componentName, $"Enable {componentName} logging");
+                bool isEnabled = settings.componentLoggingEnabled.ContainsKey(componentName) ? 
+                    settings.componentLoggingEnabled[componentName] : false;
+                    
+                CreateLoggingToggle(loggingContainer, componentName, $"Enable {componentName} logging", isEnabled);
             }
             
             // Add any additional registered components not in our standard list
@@ -200,7 +292,10 @@ namespace Plugins.GamePilot.Editor.MCP
             {
                 if (!logToggles.ContainsKey(componentName))
                 {
-                    CreateLoggingToggle(loggingContainer, componentName, $"Enable {componentName} logging");
+                    bool isEnabled = settings.componentLoggingEnabled.ContainsKey(componentName) ? 
+                        settings.componentLoggingEnabled[componentName] : false;
+                        
+                    CreateLoggingToggle(loggingContainer, componentName, $"Enable {componentName} logging", isEnabled);
                 }
             }
         }
@@ -224,10 +319,10 @@ namespace Plugins.GamePilot.Editor.MCP
             }
         }
         
-        private void CreateLoggingToggle(VisualElement container, string componentName, string label)
+        private void CreateLoggingToggle(VisualElement container, string componentName, string label, bool initialValue)
         {
             var toggle = new Toggle(label);
-            toggle.value = MCPLogger.GetComponentLoggingEnabled(componentName);
+            toggle.value = initialValue;
             
             // Make all toggles interactive, they'll work based on global enabled state
             toggle.SetEnabled(true);
@@ -240,35 +335,22 @@ namespace Plugins.GamePilot.Editor.MCP
         private void OnLoggingToggleChanged(string componentName, bool enabled)
         {
             MCPLogger.SetComponentLoggingEnabled(componentName, enabled);
+            settings.componentLoggingEnabled[componentName] = enabled;
+            SaveSettings();
         }
         
         private void OnConnectClicked()
         {
-            // Get the server URL from the text field
-            string serverUrl = serverUrlField.value;
-            
-            // If URL is empty, default to localhost:8080
-            if (string.IsNullOrWhiteSpace(serverUrl))
-            {
-                serverUrl = "ws://localhost:8080";
-                serverUrlField.value = serverUrl;
-            }
-            
-            // Validate URL format
-            if (!serverUrl.StartsWith("ws://"))
-            {
-                EditorUtility.DisplayDialog("Invalid URL", 
-                    "Please enter a valid WebSocket URL starting with ws://", "OK");
-                return;
-            }
+            // Always use localhost for the WebSocket URL
+            string serverUrl = "ws://localhost";
             
             // Get the server port from the text field
             string portText = serverPortField.value;
             
-            // If port is empty, default to 8080
+            // If port is empty, default to 5010
             if (string.IsNullOrWhiteSpace(portText))
             {
-                portText = "8080";
+                portText = "5010";
                 serverPortField.value = portText;
             }
             
@@ -280,9 +362,13 @@ namespace Plugins.GamePilot.Editor.MCP
                 return;
             }
             
+            // Save the port setting
+            settings.port = port;
+            SaveSettings();
+            
             try {
                 // Create the WebSocket URL with the specified port
-                Uri uri = new Uri($"ws://localhost:{port}");
+                Uri uri = new Uri($"{serverUrl}:{port}");
                 
                 // If we have access to the ConnectionManager, try to update its server URI
                 var connectionManager = GetConnectionManager();
@@ -316,7 +402,7 @@ namespace Plugins.GamePilot.Editor.MCP
             catch (UriFormatException)
             {
                 EditorUtility.DisplayDialog("Invalid URL", 
-                    "The URL format is invalid. Please enter a valid WebSocket URL.", "OK");
+                    "The URL format is invalid.", "OK");
             }
             catch (Exception ex)
             {
@@ -337,6 +423,9 @@ namespace Plugins.GamePilot.Editor.MCP
         
         private void OnAutoReconnectChanged(ChangeEvent<bool> evt)
         {
+            settings.autoReconnect = evt.newValue;
+            SaveSettings();
+            
             if (MCPManager.IsInitialized)
             {
                 MCPManager.EnableAutoReconnect(evt.newValue);
@@ -396,7 +485,6 @@ namespace Plugins.GamePilot.Editor.MCP
             // Update button states
             connectButton.SetEnabled(!isConnected);
             disconnectButton.SetEnabled(isInitialized);
-            serverUrlField.SetEnabled(!isConnected); // Only allow URL changes when disconnected
             serverPortField.SetEnabled(!isConnected); // Only allow port changes when disconnected
             
             // Update connection time if connected
@@ -464,6 +552,9 @@ namespace Plugins.GamePilot.Editor.MCP
         {
             // Unregister from editor updates
             EditorApplication.update -= OnEditorUpdate;
+            
+            // Save settings one last time when window is closed
+            SaveSettings();
         }
     }
 }

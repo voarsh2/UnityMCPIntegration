@@ -1,15 +1,16 @@
 # Unity MCP Integration 
 
 [![MCP](https://badge.mcpx.dev)](https://modelcontextprotocol.io/introduction)
+[![smithery badge](https://smithery.ai/badge/@quazaai/unitymcpintegration)](https://smithery.ai/server/@quazaai/unitymcpintegration)
 [![Unity](https://img.shields.io/badge/Unity-2021.3%2B-green?logo=https://w7.pngwing.com/pngs/426/535/png-transparent-unity-new-logo-tech-companies-thumbnail.png)](https://unity.com)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org)
 [![WebSockets](https://img.shields.io/badge/WebSockets-API-orange)](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API)
 
-[![Stars](https://img.shields.io/github/stars/shahzadgamedev/UnityMCPIntegration)](https://github.com/shahzadgamedev/UnityMCPIntegration/stargazers)
-[![Forks](https://img.shields.io/github/forks/shahzadgamedev/UnityMCPIntegration)](https://github.com/shahzadgamedev/UnityMCPIntegration/network/members)
-[![License](https://img.shields.io/github/license/shahzadgamedev/UnityMCPIntegration)](https://github.com/shahzadgamedev/UnityMCPIntegration/blob/main/LICENSE)
-[![Last Commit](https://img.shields.io/github/last-commit/shahzadgamedev/UnityMCPIntegration)](https://github.com/shahzadgamedev/UnityMCPIntegration/commits/main)
+[![Stars](https://img.shields.io/github/stars/quazaai/UnityMCPIntegration)](https://github.com/quazaai/UnityMCPIntegration/stargazers)
+[![Forks](https://img.shields.io/github/forks/quazaai/UnityMCPIntegration)](https://github.com/quazaai/UnityMCPIntegration/network/members)
+[![License](https://img.shields.io/github/license/quazaai/UnityMCPIntegration)](https://github.com/quazaai/UnityMCPIntegration/blob/main/LICENSE)
+[![Last Commit](https://img.shields.io/github/last-commit/quazaai/UnityMCPIntegration)](https://github.com/quazaai/UnityMCPIntegration/commits/main)
 
 <div align="center">
   <img src="mcpInspector.png" alt="Unity MCP Inspector" width="400" align="right" style="margin-left: 20px; margin-bottom: 20px;"/>
@@ -26,6 +27,10 @@ The Model Context Protocol (MCP) is a standardized protocol that connects AI mod
 - Execute C# code directly in the Unity Editor
 - Monitor logs and errors
 - Control the Editor's play mode
+- Browse and manipulate project files directly
+
+
+
 
 ## 🚀 Getting Started
 
@@ -40,20 +45,18 @@ The Model Context Protocol (MCP) is a standardized protocol that connects AI mod
 
 You have several options to install the Unity package:
 
-**Option A: Import Custom Package**
-1. Clone this repository or download it as a zip
-2. In Unity, go to `Assets > Import Package > Custom Package`
-3. Select the `UnityMCPConnection.unitypackage` file
-
-**Option B: Package Manager (Git URL)**
+**Option A: Package Manager (Git URL)**
 1. Open the Unity Package Manager (`Window > Package Manager`)
 2. Click the `+` button and select `Add package from git URL...`
-3. Enter the repository URL: `https://github.com/shahzadgamedev/UnityMCPIntegration.git?path=/UnityMCPConnection`
+3. Enter the repository URL: `https://github.com/quazaai/UnityMCPIntegration.git`
 4. Click `Add`
 
-**Option C: Manual Installation**
-1. Clone this repository
-2. Copy the `UnityMCPConnection` folder to your Unity project's `Assets` directory
+**Option B: Import Custom Package**
+1. Clone this repository or [download it as a unityPackage](https://github.com/quazaai/UnityMCPIntegration/releases)
+2. In Unity, go to `Assets > Import Package > Custom Package`
+3. Select the `UnityMCPIntegration.unitypackage` file
+
+
 
 #### 2. Set up the MCP Server
 
@@ -61,7 +64,7 @@ You have two options to run the MCP server:
 
 **Option A: Run the server directly**
 
-1. Navigate to the `mcpServer` directory
+1. Navigate to the `mcpServer (likely <path-to-project>\Library\PackageCache\com.quaza.unitymcp@d2b8f1260bca\mcpServer\)` directory
 2. Install dependencies:
    ```
    npm install
@@ -81,12 +84,17 @@ Add the server to your MCP Host configuration for Claude Desktop, Custom Impleme
     "unity-mcp-server": {
       "command": "node",
       "args": [
-        "<path-to-project>/mcpServer/build/index.js"
-      ]
+        "path-to-project>\\Library\\PackageCache\\com.quaza.unitymcp@d2b8f1260bca\\mcpServer\\mcpServer\\build\\index.js"
+      ],
+      "env": {
+        "MCP_WEBSOCKET_PORT": "5010"
+      }
     }
   }
 }
 ```
+### Demo Video
+[![YouTube](http://i.ytimg.com/vi/GxTlahBXs74/hqdefault.jpg)](https://www.youtube.com/watch?v=GxTlahBXs74)
 
 ### 🔧 Usage
 
@@ -105,11 +113,27 @@ You can open the MCP Debug window in Unity to monitor the connection and test fe
 
 The Unity MCP integration provides several tools to AI assistants:
 
+##### Unity Editor Tools
 - **get_editor_state**: Get comprehensive information about the Unity project and editor state
 - **get_current_scene_info**: Get detailed information about the current scene
 - **get_game_objects_info**: Get information about specific GameObjects in the scene
 - **execute_editor_command**: Execute C# code directly in the Unity Editor
 - **get_logs**: Retrieve and filter Unity console logs
+- **verify_connection**: Check if there's an active connection to Unity Editor
+
+##### Filesystem Tools
+- **read_file**: Read contents of a file in your Unity project
+- **read_multiple_files**: Read multiple files at once
+- **write_file**: Create or overwrite a file with new content
+- **edit_file**: Make targeted edits to existing files with diff preview
+- **list_directory**: Get a listing of files and folders in a directory
+- **directory_tree**: Get a hierarchical view of directories and files
+- **search_files**: Find files matching a search pattern
+- **get_file_info**: Get metadata about a specific file or directory
+- **find_assets_by_type**: Find all assets of a specific type (e.g. Material, Prefab)
+- **list_scripts**: Get a listing of all C# scripts in the project
+
+File paths can be absolute or relative to the Unity project's Assets folder. For example, `"Scenes/MyScene.unity"` refers to `<project>/Assets/Scenes/MyScene.unity`.
 
 ## 🛠️ Architecture
 
@@ -119,6 +143,24 @@ The integration consists of two main components:
 2. **MCP Server (TypeScript/Node.js)**: Implements the MCP protocol and communicates with the Unity plugin
 
 Communication between them happens via WebSocket, transferring JSON messages for commands and data.
+
+## File System Access
+
+The Unity MCP integration now includes powerful filesystem tools that allow AI assistants to:
+
+- Browse, read, and edit files in your Unity project
+- Create new files and directories
+- Search for specific files or asset types
+- Analyze your project structure
+- Make targeted code changes with diff previews
+
+All file operations are restricted to the Unity project directory for security. The system intelligently handles both absolute and relative paths, always resolving them relative to your project's Assets folder for convenience.
+
+Example usages:
+- Get a directory listing: `list_directory(path: "Scenes")`
+- Read a script file: `read_file(path: "Scripts/Player.cs")`
+- Edit a configuration file: `edit_file(path: "Resources/config.json", edits: [{oldText: "value: 10", newText: "value: 20"}], dryRun: true)`
+- Find all materials: `find_assets_by_type(assetType: "Material")`
 
 ## 👥 Contributing
 
