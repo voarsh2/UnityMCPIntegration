@@ -109,7 +109,7 @@ export function registerTools(server, wsHandler) {
             },
             {
                 name: 'execute_editor_command',
-                description: 'Execute C# code directly in the Unity Editor - code is executed immediately in the editor context, not as a MonoBehaviour script',
+                description: 'Execute C# code directly in the Unity Editor - allows full flexibility including custom namespaces and multiple classes',
                 category: 'Editor Control',
                 tags: ['unity', 'editor', 'command', 'c#'],
                 inputSchema: {
@@ -117,7 +117,7 @@ export function registerTools(server, wsHandler) {
                     properties: {
                         code: {
                             type: 'string',
-                            description: 'Raw C# code to execute immediately in the Unity Editor. DO NOT include namespace declarations, class definitions or Start/Update methods. Write code that executes directly like a function body. The following namespaces are automatically available: UnityEngine, UnityEditor, System, System.Linq, System.Collections, and System.Collections.Generic. The code should return a value if you want to get results back.',
+                            description: 'C# code to execute in Unity Editor. You MUST define a public class named "McpScript" with a public static method named "Execute" that returns an object. Example: "public class McpScript { public static object Execute() { /* your code here */ return result; } }". You can include any necessary namespaces, additional classes, and methods.',
                             minLength: 1
                         }
                     },
