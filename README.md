@@ -1,4 +1,4 @@
-# Unity MCP Integration 
+# 🚀 Advacned Unity MCP Integration 
 
 [![MCP](https://badge.mcpx.dev)](https://modelcontextprotocol.io/introduction)
 [![smithery badge](https://smithery.ai/badge/@quazaai/unitymcpintegration)](https://smithery.ai/server/@quazaai/unitymcpintegration)
@@ -18,16 +18,15 @@
 
 This package provides a seamless integration between [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) and Unity Editor, allowing AI assistants to understand and interact with your Unity projects in real-time. With this integration, AI assistants can access information about your scene hierarchy, project settings, and execute code directly in the Unity Editor context.
 
-## 📚 What is MCP?
-
-The Model Context Protocol (MCP) is a standardized protocol that connects AI models to tools and context sources. It enables AI assistants to:
-
+## 📚 Features
+- Browse and manipulate project files directly
 - Access real-time information about your Unity project
 - Understand your scene hierarchy and game objects
 - Execute C# code directly in the Unity Editor
 - Monitor logs and errors
 - Control the Editor's play mode
-- Browse and manipulate project files directly
+- Wait For Code Execution
+
 
 
 
