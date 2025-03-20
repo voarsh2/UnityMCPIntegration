@@ -26,10 +26,21 @@ class UnityMCPServer {
 
     // Get port from environment variable or use default
     // Add port range to try if the default port is taken
-    let wsPort = parseInt(process.env.MCP_WEBSOCKET_PORT || '8080');
+    let wsPort = parseInt(process.env.MCP_WEBSOCKET_PORT || '5010');
     
     // Determine Unity project path - with improved path sanitization
-    let projectPath = process.env.UNITY_PROJECT_PATH || path.resolve(process.cwd());
+    let projectPath = process.env.UNITY_PROJECT_PATH || (() => {
+      // Get the current working directory
+      const cwd = path.resolve(process.cwd());
+      // Find the Assets directory in the path
+      const assetsIndex = cwd.indexOf('Assets');
+      // If Assets is found, truncate the path to include Assets
+      if (assetsIndex !== -1) {
+        return cwd.substring(0, assetsIndex + 'Assets'.length);
+      }
+      // If Assets is not found, return the original path
+      return cwd;
+    })();
     
     // Sanitize the path to remove any unexpected characters
     projectPath = projectPath.replace(/["']/g, '');

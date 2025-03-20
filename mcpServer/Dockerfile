@@ -17,7 +17,7 @@ COPY src/ ./src/
 RUN npm run build
 
 # Default environment variable
-ENV MCP_WEBSOCKET_PORT=8080
+ENV MCP_WEBSOCKET_PORT=5010
 
 # Expose the port dynamically using the environment variable
 EXPOSE ${MCP_WEBSOCKET_PORT}

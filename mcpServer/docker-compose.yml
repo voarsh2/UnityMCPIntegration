@@ -4,9 +4,9 @@ services:
   unity-mcp-server:
     build: .
     ports:
-      - "${MCP_WEBSOCKET_PORT:-8080}:${MCP_WEBSOCKET_PORT:-8080}"
+      - "${MCP_WEBSOCKET_PORT:-5010}:${MCP_WEBSOCKET_PORT:-5010}"
     environment:
-      - MCP_WEBSOCKET_PORT=${MCP_WEBSOCKET_PORT:-8080}
+      - MCP_WEBSOCKET_PORT=${MCP_WEBSOCKET_PORT:-5010}
     restart: unless-stopped
     volumes:
       # Optional volume for persisting data if needed
