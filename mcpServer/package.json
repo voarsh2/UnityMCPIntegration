@@ -13,7 +13,8 @@
     "build": "tsc",
     "start": "node build/index.js",
     "dev": "tsc --watch",
-    "inspector": "npx @modelcontextprotocol/inspector build/index.js"
+    "inspector": "npx @modelcontextprotocol/inspector build/index.js",
+    "test-port": "node -e \"const net = require('net'); const server = net.createServer(); server.on('error', (err) => { console.error('Port in use:', err.code === 'EADDRINUSE'); process.exit(1); }); server.listen(process.env.PORT || 5010, () => { console.log('Port available'); server.close(); });\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.7.0",

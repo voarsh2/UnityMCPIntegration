@@ -45,6 +45,8 @@ export const FindAssetsByTypeArgsSchema = z.object({
     searchPath: z.string().optional().default("").describe('Directory to search in. Can be absolute or relative to Unity project Assets folder. An empty string will search the entire Assets folder.'),
     maxDepth: z.number().optional().default(1).describe('Maximum depth to search. 1 means search only in the specified directory, 2 includes immediate subdirectories, and so on. Set to -1 for unlimited depth.'),
 });
+// Buffer timeout in milliseconds (120 seconds)
+const COMMAND_BUFFER_TIMEOUT = 120000;
 export function registerTools(server, wsHandler) {
     // Determine project path from environment variable (which now should include 'Assets')
     const projectPath = process.env.UNITY_PROJECT_PATH || path.resolve(process.cwd());
@@ -53,6 +55,67 @@ export function registerTools(server, wsHandler) {
         : projectPath;
     console.error(`[Unity MCP ToolDefinitions] Using project path: ${projectPath}`);
     console.error(`[Unity MCP ToolDefinitions] Using project root path: ${projectRootPath}`);
+    // Buffer for tool commands that require Unity connection
+    const commandBuffer = [];
+    let commandProcessorInterval = null;
+    // Start command processor
+    startCommandProcessor();
+    function startCommandProcessor() {
+        if (commandProcessorInterval) {
+            clearInterval(commandProcessorInterval);
+        }
+        commandProcessorInterval = setInterval(() => {
+            processBufferedCommands(false);
+        }, 5000); // Check every 5 seconds
+    }
+    // Process buffered commands
+    function processBufferedCommands(unityJustConnected) {
+        if (commandBuffer.length === 0)
+            return;
+        const now = Date.now();
+        const remainingCommands = [];
+        // Process each command in the buffer
+        for (const cmd of commandBuffer) {
+            const timeWaited = now - cmd.timestamp;
+            const shouldExecute = unityJustConnected || timeWaited >= COMMAND_BUFFER_TIMEOUT;
+            if (shouldExecute) {
+                if (wsHandler.isConnected()) {
+                    // Unity is connected, execute the command
+                    console.error(`[Unity MCP] Executing buffered command ${cmd.name} after ${Math.round(timeWaited / 1000)} seconds`);
+                    try {
+                        // Execute the command based on its name
+                        executeUnityTool(cmd.name, cmd.args)
+                            .then(cmd.resolve)
+                            .catch(cmd.reject);
+                    }
+                    catch (error) {
+                        cmd.reject(error);
+                    }
+                }
+                else if (timeWaited >= COMMAND_BUFFER_TIMEOUT) {
+                    // Command timed out waiting for Unity
+                    console.error(`[Unity MCP] Rejecting buffered command ${cmd.name} after ${Math.round(timeWaited / 1000)} seconds - Unity not connected`);
+                    cmd.reject(new McpError(ErrorCode.InternalError, 'Unity Editor connection timed out. Command was buffered for 120 seconds, but Unity did not connect.'));
+                }
+                else {
+                    // Keep in buffer if we're still within timeout
+                    remainingCommands.push(cmd);
+                }
+            }
+            else {
+                // Not ready to execute yet, keep in buffer
+                remainingCommands.push(cmd);
+            }
+        }
+        // Update the buffer with remaining commands
+        commandBuffer.length = 0;
+        commandBuffer.push(...remainingCommands);
+    }
+    // Connection event handler for Unity
+    wsHandler.onConnect(() => {
+        // Process buffered commands when Unity connects
+        processBufferedCommands(true);
+    });
     // List all available tools (both Unity and filesystem tools)
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
         tools: [
@@ -338,11 +401,25 @@ export function registerTools(server, wsHandler) {
                 };
             }
         }
-        // For all other tools (Unity-specific), verify connection first
+        // For all other tools (Unity-specific), buffer if Unity isn't connected
         if (!wsHandler.isConnected()) {
-            throw new McpError(ErrorCode.InternalError, 'Unity Editor is not connected. Please first verify the connection using the verify_connection tool, ' +
-                'and ensure the Unity Editor is running with the MCP plugin and that the WebSocket connection is established.');
+            console.error(`[Unity MCP] Unity not connected, buffering ${name} command for up to 120 seconds`);
+            // Return a promise that will be resolved when Unity connects or after timeout
+            return new Promise((resolve, reject) => {
+                commandBuffer.push({
+                    name,
+                    args,
+                    resolve,
+                    reject,
+                    timestamp: Date.now()
+                });
+            });
         }
+        // If Unity is connected, execute the command immediately
+        return executeUnityTool(name, args);
+    });
+    // Execute Unity tool function
+    async function executeUnityTool(name, args) {
         switch (name) {
             case 'get_editor_state': {
                 try {
@@ -459,5 +536,19 @@ export function registerTools(server, wsHandler) {
             default:
                 throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
         }
-    });
+    }
+    // Clean up resources when server is closing
+    return {
+        cleanup: () => {
+            if (commandProcessorInterval) {
+                clearInterval(commandProcessorInterval);
+                commandProcessorInterval = null;
+            }
+            // Reject any pending commands
+            for (const cmd of commandBuffer) {
+                cmd.reject(new McpError(ErrorCode.InternalError, 'Server is shutting down, command aborted'));
+            }
+            commandBuffer.length = 0;
+        }
+    };
 }

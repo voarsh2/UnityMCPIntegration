@@ -7,60 +7,68 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 
+// A simple flag to prevent multiple initializations
+let isServerRunning = false;
+
 class UnityMCPServer {
   private server: Server;
   private wsHandler: WebSocketHandler;
+  private isShuttingDown: boolean = false;
+  private toolsCleanup: { cleanup: () => void } | null = null;
 
   constructor() {
+    if (isServerRunning) {
+      throw new Error('MCP Server is already running');
+    }
+    
+    isServerRunning = true;
+    
     // Initialize MCP Server
     this.server = new Server(
       { name: 'unity-mcp-server', version: '0.2.0' },
       { capabilities: { tools: {} } }
     );
 
-    // Setup project paths and websocket
-    const wsPort = parseInt(process.env.MCP_WEBSOCKET_PORT || '5010');
+    // Get project paths
     const projectRootPath = this.setupProjectPaths();
     
-    // Initialize WebSocket Handler for Unity communication
+    // Set up WebSocket handler with fixed port 8090
+    const wsPort = parseInt(process.env.MCP_WEBSOCKET_PORT || '8090');
     this.wsHandler = new WebSocketHandler(wsPort);
 
-    // Register MCP tools
-    registerTools(this.server, this.wsHandler);
+    // Register tools
+    this.toolsCleanup = registerTools(this.server, this.wsHandler);
     
-    // Error handling
+    // Setup error handling
     this.server.onerror = (error) => console.error('[MCP Error]', error);
-    this.setupShutdownHandlers();
+    this.setupCleanupHandlers();
   }
 
   private setupProjectPaths(): string {
+    // Get directory path
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     console.error(`[Unity MCP] Server starting from directory: ${__dirname}`);
     
-    // Get the project root path (parent of Assets)
+    // Find Unity project path
     let projectRootPath = process.env.UNITY_PROJECT_PATH || this.determineUnityProjectPath(__dirname);
     projectRootPath = path.normalize(projectRootPath.replace(/["']/g, ''));
     
-    // Make sure path ends with a directory separator
+    // Ensure it ends with a path separator
     if (!projectRootPath.endsWith(path.sep)) {
       projectRootPath += path.sep;
     }
     
-    // Create the full path to the Assets folder
-    const projectPath = path.join(projectRootPath, 'Assets') + path.sep;
-    this.setupEnvironmentPath(projectRootPath, projectPath);
+    // Get Assets path
+    const assetsPath = path.join(projectRootPath, 'Assets') + path.sep;
     
-    return projectRootPath;
-  }
-
-  private setupEnvironmentPath(projectRootPath: string, projectPath: string): void {
+    // Set the environment variable
     try {
-      if (fs.existsSync(projectPath)) {
-        console.error(`[Unity MCP] Using project path: ${projectPath}`);
-        process.env.UNITY_PROJECT_PATH = projectPath;
+      if (fs.existsSync(assetsPath) && fs.statSync(assetsPath).isDirectory()) {
+        console.error(`[Unity MCP] Using project path: ${assetsPath}`);
+        process.env.UNITY_PROJECT_PATH = assetsPath;
       } else {
-        console.error(`[Unity MCP] WARNING: Assets folder not found at ${projectPath}`);
+        console.error(`[Unity MCP] WARNING: Assets folder not found at ${assetsPath}`);
         console.error(`[Unity MCP] Using project root instead: ${projectRootPath}`);
         process.env.UNITY_PROJECT_PATH = projectRootPath;
       }
@@ -68,26 +76,49 @@ class UnityMCPServer {
       console.error(`[Unity MCP] Error checking project path: ${error}`);
       process.env.UNITY_PROJECT_PATH = process.cwd();
     }
+    
+    return projectRootPath;
   }
 
-  private setupShutdownHandlers(): void {
-    const cleanupHandler = async () => {
+  private setupCleanupHandlers(): void {
+    // Ensure cleanup happens only once
+    let cleanupCalled = false;
+    
+    const cleanup = async (signal: string) => {
+      if (cleanupCalled || this.isShuttingDown) return;
+      
+      cleanupCalled = true;
+      this.isShuttingDown = true;
+      console.error(`[Unity MCP] Received ${signal} signal - cleaning up...`);
+      
       await this.cleanup();
-      process.exit(0);
+      isServerRunning = false;
+      
+      // Don't exit the process - let Node.js handle that naturally
+      // This avoids issues with multiple process.exit() calls
     };
     
-    process.on('SIGINT', cleanupHandler);
-    process.on('SIGTERM', cleanupHandler);
+    // Handle signals
+    process.once('SIGINT', () => cleanup('SIGINT'));
+    process.once('SIGTERM', () => cleanup('SIGTERM'));
+    process.once('beforeExit', () => cleanup('beforeExit'));
+    
+    // Handle uncaught exceptions
+    process.once('uncaughtException', async (err) => {
+      console.error('[Unity MCP] Uncaught exception:', err);
+      await cleanup('uncaughtException');
+      // Only force exit for uncaught exceptions
+      process.exit(1);
+    });
   }
 
   /**
-   * Determine the Unity project path based on the script location
+   * Find the Unity project path based on script location
    */
   private determineUnityProjectPath(scriptDir: string): string {
     scriptDir = path.normalize(scriptDir);
-    console.error(`[Unity MCP] Script directory: ${scriptDir}`);
     
-    // Case 1: Installed in Assets folder
+    // Case 1: In Assets folder
     const assetsMatch = /^(.+?[\/\\]Assets)[\/\\].*$/i.exec(scriptDir);
     if (assetsMatch) {
       const projectRoot = path.dirname(assetsMatch[1]);
@@ -95,7 +126,7 @@ class UnityMCPServer {
       return projectRoot;
     }
     
-    // Case 2: Installed via Package Manager
+    // Case 2: In Package Manager
     const libraryMatch = /^(.+?[\/\\]Library)[\/\\]PackageCache[\/\\].*$/i.exec(scriptDir);
     if (libraryMatch) {
       const projectRoot = path.dirname(libraryMatch[1]);
@@ -108,58 +139,94 @@ class UnityMCPServer {
     }
     
     // Case 3: Check parent directories
-    for (const dir of this.getParentDirectories(scriptDir)) {
-      // Check if this directory is "UnityMCP"
-      if (path.basename(dir) === 'UnityMCP') {
-        console.error(`[Unity MCP] Found UnityMCP directory at: ${dir}`);
-        return dir;
+    const dirs = scriptDir.split(path.sep).filter(Boolean);
+    let currentPath = '';
+    
+    // For Windows, start with the drive letter
+    if (scriptDir.match(/^[A-Z]:/i)) {
+      currentPath = dirs.shift() + path.sep;
+    }
+    
+    for (let i = 0; i < dirs.length; i++) {
+      currentPath = path.join(currentPath, dirs[i]);
+      
+      // Check if this is UnityMCP directory
+      if (path.basename(currentPath) === 'UnityMCP') {
+        console.error(`[Unity MCP] Found UnityMCP directory at: ${currentPath}`);
+        return currentPath;
       }
       
-      // Check if this directory contains an Assets folder
-      const assetsDir = path.join(dir, 'Assets');
+      // Check if this contains Assets folder
+      const assetsDir = path.join(currentPath, 'Assets');
       try {
         if (fs.existsSync(assetsDir) && fs.statSync(assetsDir).isDirectory()) {
-          console.error(`[Unity MCP] Found Unity project at: ${dir}`);
-          return dir;
+          console.error(`[Unity MCP] Found Unity project at: ${currentPath}`);
+          return currentPath;
         }
-      } catch (e) {
+      } catch {
         // Ignore errors checking directories
       }
     }
     
-    // Fallback
+    // Fallback to current directory
     console.error('[Unity MCP] Could not detect Unity project directory. Using current directory.');
     return process.cwd();
   }
 
-  private getParentDirectories(filePath: string): string[] {
-    const result: string[] = [];
-    const dirs = filePath.split(path.sep);
+  public async cleanup(): Promise<void> {
+    if (this.isShuttingDown) return;
+    this.isShuttingDown = true;
     
-    for (let i = 1; i <= dirs.length; i++) {
-      result.push(dirs.slice(0, i).join(path.sep));
+    console.error('[Unity MCP] Cleaning up resources...');
+    
+    try {
+      // Clean up tools first to handle any pending commands
+      if (this.toolsCleanup) {
+        this.toolsCleanup.cleanup();
+      }
+      
+      // Close websocket handler
+      if (this.wsHandler) {
+        await this.wsHandler.close();
+        console.error('[Unity MCP] WebSocket handler closed');
+      }
+      
+      // Then close the MCP server
+      if (this.server) {
+        await this.server.close();
+        console.error('[Unity MCP] MCP server closed');
+      }
+    } catch (error) {
+      console.error('[Unity MCP] Error during cleanup:', error);
     }
-    
-    return result;
   }
 
-  private async cleanup() {
-    console.error('Cleaning up resources...');
-    await this.wsHandler.close();
-    await this.server.close();
-  }
-
-  async run() {
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-    console.error('[Unity MCP] Server running and ready to accept connections');
-    console.error('[Unity MCP] WebSocket server listening on port', this.wsHandler.port);
+  async run(): Promise<void> {
+    try {
+      // Connect to stdio transport
+      const transport = new StdioServerTransport();
+      await this.server.connect(transport);
+      
+      console.error('[Unity MCP] Server running and ready to accept connections');
+      console.error('[Unity MCP] WebSocket server listening on port', this.wsHandler.port);
+      console.error('[Unity MCP] Commands will be buffered for up to 120 seconds if Unity is not connected');
+    } catch (error) {
+      console.error('[Unity MCP] Error starting server:', error);
+      await this.cleanup();
+      throw error;
+    }
   }
 }
 
-// Start the server
-const server = new UnityMCPServer();
-server.run().catch(err => {
-  console.error('Fatal error in MCP server:', err);
-  process.exit(1);
-});
+// Only start the server if it's not already running
+if (!isServerRunning) {
+  try {
+    const server = new UnityMCPServer();
+    server.run().catch(async (err) => {
+      console.error('Fatal error in MCP server:', err);
+      await server.cleanup();
+    });
+  } catch (err) {
+    console.error('Error creating MCP server:', err);
+  }
+}
