@@ -94,6 +94,14 @@ Add the server to your MCP Host configuration for Claude Desktop, Custom Impleme
 ### Demo Video
 [![YouTube](http://i.ytimg.com/vi/GxTlahBXs74/hqdefault.jpg)](https://www.youtube.com/watch?v=GxTlahBXs74)
 
+### Installing via Smithery
+
+To install Unity MCP Integration for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@quazaai/unitymcpintegration):
+
+```bash
+npx -y @smithery/cli install @quazaai/unitymcpintegration --client claude
+```
+
 ### 🔧 Usage
 
 #### Debugging and Monitoring
