@@ -23,7 +23,6 @@ export class WebSocketHandler {
   private logBuffer: LogEntry[] = [];
   private readonly maxLogBufferSize = 1000;
   private commandResultPromise: CommandPromise | null = null;
-  private commandStartTime: number | null = null;
   private lastHeartbeat: number = 0;
   private connectionEstablished: boolean = false;
   private pendingRequests: Record<string, {
@@ -53,140 +52,78 @@ export class WebSocketHandler {
 
   private initializeWebSocketServer(): void {
     try {
-      // Create WebSocket server with fixed port
       this.wsServer = new WebSocketServer({ port: this._port });
       console.error(`[Unity MCP] WebSocket server starting on port ${this._port}`);
       
-      this.wsServer.on('listening', () => {
-        console.error(`[Unity MCP] WebSocket server is listening on port ${this._port}`);
-      });
-      
-      this.wsServer.on('error', (error: any) => {
-        console.error(`[Unity MCP] WebSocket server error:`, error);
-        // If port is in use, log but don't try alternative ports
-        if (error.code === 'EADDRINUSE') {
-          console.error(`[Unity MCP] Port ${this._port} is already in use. Please ensure no other instance is running or specify a different port.`);
-        }
-      });
-      
       this.wsServer.on('connection', this.handleConnection.bind(this));
-      
+      this.wsServer.on('error', (error) => console.error(`[Unity MCP] WebSocket server error:`, error));
     } catch (error) {
       console.error(`[Unity MCP] Failed to create WebSocket server:`, error);
-    }
-  }
-
-  private closeServer(): void {
-    if (this.wsServer) {
-      try {
-        // Close all client connections
-        for (const client of this.wsServer.clients) {
-          try {
-            client.terminate();
-          } catch (err) {
-            // Ignore client termination errors
-          }
-        }
-        
-        // Close the server
-        this.wsServer.close();
-        console.error('[Unity MCP] WebSocket server closed');
-      } catch (error) {
-        console.error('[Unity MCP] Error closing WebSocket server:', error);
-      }
-      this.wsServer = null;
     }
   }
 
   private handleConnection(ws: WebSocket): void {
     console.error('[Unity MCP] Unity Editor connected');
     
-    // Store connection
     this.unityConnection = ws;
     this.connectionEstablished = true;
     this.lastHeartbeat = Date.now();
     
-    // Clear any existing ping interval
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-    }
+    // Setup ping interval
+    this.pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        this.sendPing();
+      } else {
+        if (this.pingInterval) clearInterval(this.pingInterval);
+      }
+    }, 15000);
     
     // Send handshake
     this.sendHandshake();
     
-    // Setup message handler
+    // Setup event handlers
     ws.on('message', (data) => {
       try {
         this.lastHeartbeat = Date.now();
         const message = JSON.parse(data.toString());
-        console.error('[Unity MCP] Received message type:', message.type);
         this.handleUnityMessage(message);
       } catch (error) {
         console.error('[Unity MCP] Error handling message:', error);
       }
     });
     
-    // Setup error handler
-    ws.on('error', (error) => {
-      console.error('[Unity MCP] WebSocket error:', error);
-      this.connectionEstablished = false;
-    });
+    ws.on('error', () => this.connectionEstablished = false);
     
-    // Setup close handler
     ws.on('close', () => {
       console.error('[Unity MCP] Unity Editor disconnected');
       this.unityConnection = null;
       this.connectionEstablished = false;
     });
     
-    // Setup ping interval (keep connection alive)
-    this.pingInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        this.sendPing();
-      } else if (ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
-        if (this.pingInterval) {
-          clearInterval(this.pingInterval);
-          this.pingInterval = null;
-        }
-      }
-    }, 15000);
-    
-    // Trigger connection handlers
+    // Notify connection handlers
     this.notifyConnectionHandlers();
   }
 
   private notifyConnectionHandlers(): void {
     for (const handler of this.connectHandlers) {
-      try {
-        handler();
-      } catch (error) {
-        console.error('[Unity MCP] Error in connection handler:', error);
-      }
+      try { handler(); } catch (error) { /* Ignore handler errors */ }
     }
   }
 
   private sendHandshake(): void {
-    this.sendToUnity({
-      type: 'handshake',
-      data: { message: 'MCP Server Connected' }
-    });
+    this.sendToUnity({ type: 'handshake', data: { message: 'MCP Server Connected' } });
   }
   
   private sendPing(): void {
-    this.sendToUnity({
-      type: 'ping',
-      data: { timestamp: Date.now() }
-    });
+    this.sendToUnity({ type: 'ping', data: { timestamp: Date.now() } });
   }
 
   private sendToUnity(message: any): void {
     try {
       if (this.unityConnection && this.unityConnection.readyState === WebSocket.OPEN) {
-        const messageStr = JSON.stringify(message);
-        this.unityConnection.send(messageStr);
+        this.unityConnection.send(JSON.stringify(message));
       }
     } catch (error) {
-      console.error(`[Unity MCP] Error sending message:`, error);
       this.connectionEstablished = false;
     }
   }
@@ -202,7 +139,6 @@ export class WebSocketHandler {
           if (this.commandResultPromise) {
             this.commandResultPromise.resolve(message.data);
             this.commandResultPromise = null;
-            this.commandStartTime = null;
           }
           break;
 
@@ -219,10 +155,6 @@ export class WebSocketHandler {
         case 'gameObjectsDetails':
           this.handleRequestResponse(message);
           break;
-        
-        default:
-          console.error('[Unity MCP] Unknown message type:', message);
-          break;
       }
     } catch (error) {
       console.error('[Unity MCP] Error processing message:', error);
@@ -230,54 +162,66 @@ export class WebSocketHandler {
   }
 
   private handleRequestResponse(message: UnityMessage): void {
-    try {
-      const requestId = message.data?.requestId;
-      if (requestId && this.pendingRequests[requestId]) {
-        this.pendingRequests[requestId].resolve(message.data);
-        delete this.pendingRequests[requestId];
-      }
-    } catch (error) {
-      console.error('[Unity MCP] Error handling request response:', error);
+    const requestId = message.data?.requestId;
+    if (requestId && this.pendingRequests[requestId]) {
+      this.pendingRequests[requestId].resolve(message.data);
+      delete this.pendingRequests[requestId];
     }
   }
 
   private addLogEntry(logEntry: LogEntry): void {
     this.logBuffer.push(logEntry);
-    if (this.logBuffer.length > this.maxLogBufferSize) {
-      this.logBuffer.shift();
-    }
+    if (this.logBuffer.length > this.maxLogBufferSize) this.logBuffer.shift();
   }
 
-  // Public methods remain largely the same, just with improved robustness
   public async executeEditorCommand(code: string, timeoutMs: number = 5000): Promise<any> {
-    // No need to buffer here as buffering is now handled at the tool level
-    if (!this.isConnected()) {
-      throw new Error('Unity Editor is not connected');
-    }
-
-    try {
-      this.commandStartTime = Date.now();
-      
+    await this.waitForConnection();
+    
+    return new Promise((resolve, reject) => {
       this.sendToUnity({
         type: 'executeEditorCommand',
         data: { code }
       });
 
-      return await Promise.race([
-        new Promise((resolve, reject) => {
-          this.commandResultPromise = { resolve, reject };
-        }),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(
-            `Command execution timed out after ${timeoutMs/1000} seconds`
-          )), timeoutMs)
-        )
-      ]);
-    } catch (error) {
-      this.commandResultPromise = null;
-      this.commandStartTime = null;
-      throw error;
-    }
+      this.commandResultPromise = { resolve, reject };
+      
+      // Set timeout
+      setTimeout(() => {
+        if (this.commandResultPromise) {
+          this.commandResultPromise = null;
+          reject(new Error(`Command execution timed out after ${timeoutMs/1000} seconds`));
+        }
+      }, timeoutMs);
+    });
+  }
+
+  private async waitForConnection(timeoutMs: number = 120000): Promise<void> {
+    if (this.isConnected()) return;
+    
+    const startTime = Date.now();
+    console.error('[Unity MCP] Waiting for Unity to connect...');
+    
+    return new Promise((resolve, reject) => {
+      // One-time handler for when Unity connects
+      const connectionHandler = () => {
+        clearInterval(checkInterval);
+        resolve();
+      };
+      
+      // Add connection handler
+      this.onConnect(connectionHandler);
+      
+      // Check periodically for timeout
+      const checkInterval = setInterval(() => {
+        if (this.isConnected()) {
+          clearInterval(checkInterval);
+          resolve();
+        } else if (Date.now() - startTime > timeoutMs) {
+          clearInterval(checkInterval);
+          reject(new Error('Timed out waiting for Unity connection'));
+        }
+      }, 1000);
+    });
   }
 
   public getEditorState(): UnityEditorState {
@@ -311,10 +255,7 @@ export class WebSocketHandler {
       if (timestampAfter && new Date(log.timestamp) < new Date(timestampAfter)) return false;
       if (timestampBefore && new Date(log.timestamp) > new Date(timestampBefore)) return false;
       return true;
-    });
-
-    // Apply count limit
-    filteredLogs = filteredLogs.slice(-count);
+    }).slice(-count);
 
     // Apply field selection if specified
     if (fields?.length) {
@@ -333,41 +274,26 @@ export class WebSocketHandler {
   }
 
   public isConnected(): boolean {
-    // Check WebSocket readyState
-    if (!this.unityConnection || this.unityConnection.readyState !== WebSocket.OPEN) {
-      return false;
-    }
-    
-    // Check heartbeat (60 seconds timeout)
-    const heartbeatTimeout = 60000;
-    if (Date.now() - this.lastHeartbeat > heartbeatTimeout) {
-      console.error('[Unity MCP] Connection may be stale - no recent communication');
-      return false;
-    }
-    
-    return this.connectionEstablished;
+    return this.connectionEstablished && 
+           this.unityConnection !== null && 
+           this.unityConnection.readyState === WebSocket.OPEN;
   }
   
   public requestEditorState(): void {
-    this.sendToUnity({
-      type: 'requestEditorState',
-      data: {}
-    });
+    this.sendToUnity({ type: 'requestEditorState', data: {} });
   }
 
   public async requestSceneInfo(detailLevel: string): Promise<any> {
+    await this.waitForConnection();
     return this.makeUnityRequest('getSceneInfo', { detailLevel }, 'sceneInfo');
   }
   
   public async requestGameObjectsInfo(instanceIDs: number[], detailLevel: string): Promise<any> {
+    await this.waitForConnection();
     return this.makeUnityRequest('getGameObjectsInfo', { instanceIDs, detailLevel }, 'gameObjectDetails');
   }
 
   private async makeUnityRequest(type: string, data: any, resultField: string): Promise<any> {
-    if (!this.isConnected()) {
-      throw new Error('Unity Editor is not connected');
-    }
-    
     const requestId = crypto.randomUUID();
     data.requestId = requestId;
     
@@ -377,7 +303,7 @@ export class WebSocketHandler {
           delete this.pendingRequests[requestId];
           reject(new Error(`Request for ${type} timed out`));
         }
-      }, 10000);
+      }, 120000);
       
       this.pendingRequests[requestId] = {
         resolve: (data) => {
@@ -390,31 +316,11 @@ export class WebSocketHandler {
     });
     
     this.sendToUnity({ type, data });
-    
     return responsePromise;
-  }
-
-  public async sendMessage(message: string | object): Promise<void> {
-    if (!this.unityConnection || this.unityConnection.readyState !== WebSocket.OPEN) {
-      return Promise.resolve();
-    }
-    
-    const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
-    
-    return new Promise<void>((resolve, reject) => {
-      this.unityConnection!.send(messageStr, (err) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve();
-        }
-      });
-    });
   }
   
   public async close(): Promise<void> {
-    // Notify all handlers that we're disconnecting
-    this.connectHandlers = [];
+    console.error('[Unity MCP] Closing WebSocket handler');
     
     // Clear ping interval
     if (this.pingInterval) {
@@ -425,38 +331,54 @@ export class WebSocketHandler {
     // Close Unity connection
     if (this.unityConnection) {
       try {
-        // Try to send a shutdown message
+        // Try to send a shutdown message if possible
         if (this.unityConnection.readyState === WebSocket.OPEN) {
-          this.unityConnection.send(JSON.stringify({
-            type: 'shutdown',
-            data: { message: 'Server shutting down' }
-          }));
+          try {
+            this.unityConnection.send(JSON.stringify({
+              type: 'shutdown', 
+              data: { message: 'Server shutting down' }
+            }));
+          } catch (e) {
+            // Ignore send errors during shutdown
+          }
         }
+        
+        // Force connection termination
         this.unityConnection.terminate();
+        this.unityConnection = null;
       } catch (error) {
         console.error('[Unity MCP] Error terminating Unity connection:', error);
       }
-      this.unityConnection = null;
     }
     
     // Close WebSocket server
-    return new Promise<void>((resolve) => {
-      if (!this.wsServer) {
-        resolve();
-        return;
-      }
-      
+    if (this.wsServer) {
       try {
-        this.wsServer.close(() => {
-          console.error('[Unity MCP] WebSocket server closed');
-          this.wsServer = null;
-          resolve();
-        });
+        // Force terminate all clients first
+        for (const client of this.wsServer.clients) {
+          try {
+            client.terminate();
+          } catch (e) {
+            // Ignore client termination errors
+          }
+        }
+        
+        // Close server without waiting for callbacks
+        this.wsServer.close();
+        
+        // Don't wait for close event, just mark as closed
+        this.wsServer = null;
+        
+        console.error('[Unity MCP] WebSocket server closed');
       } catch (error) {
         console.error('[Unity MCP] Error closing WebSocket server:', error);
         this.wsServer = null;
-        resolve();
       }
-    });
+    }
+    
+    // Don't wait for async callbacks that might never happen
+    this.pendingRequests = {};
+    
+    console.error('[Unity MCP] WebSocket handler closed successfully');
   }
 }

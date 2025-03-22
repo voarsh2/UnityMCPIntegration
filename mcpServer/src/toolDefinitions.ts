@@ -65,7 +65,7 @@ export const FindAssetsByTypeArgsSchema = z.object({
 interface BufferedCommand {
   name: string;
   args: any;
-  resolve: (result: any) => void;
+  resolve: (result: { content: Array<{ type: string; text: string }> }) => void;
   reject: (error: any) => void;
   timestamp: number;
 }
@@ -118,7 +118,7 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
           console.error(`[Unity MCP] Executing buffered command ${cmd.name} after ${Math.round(timeWaited/1000)} seconds`);
           try {
             // Execute the command based on its name
-            executeUnityTool(cmd.name, cmd.args)
+            executeUnityTool(cmd.name, cmd.args, wsHandler)
               .then(cmd.resolve)
               .catch(cmd.reject);
           } catch (error) {
@@ -383,7 +383,7 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
     ],
   }));
 
-  // Handle tool calls
+  // Handle tool calls with improved typing
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
@@ -449,22 +449,44 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
       
       // Return a promise that will be resolved when Unity connects or after timeout
       return new Promise((resolve, reject) => {
-        commandBuffer.push({
+        // Set a timer for debugging
+        const startTime = Date.now();
+        const timer = setInterval(() => {
+          const elapsed = Math.round((Date.now() - startTime) / 1000);
+          console.error(`[Unity MCP] Still waiting for Unity to connect (${elapsed}s elapsed) for ${name} command`);
+        }, 15000); // Log every 15 seconds
+        
+        const commandEntry: BufferedCommand = {
           name,
           args,
-          resolve,
-          reject,
-          timestamp: Date.now()
-        });
+          resolve: (result) => {
+            clearInterval(timer);
+            resolve(result);
+          },
+          reject: (error) => {
+            clearInterval(timer);
+            reject(error);
+          },
+          timestamp: startTime
+        };
+        
+        // Add to buffer
+        commandBuffer.push(commandEntry);
       });
     }
     
     // If Unity is connected, execute the command immediately
-    return executeUnityTool(name, args);
+    try {
+      console.error(`[Unity MCP] Unity connected, executing ${name} command immediately`);
+      return await executeUnityTool(name, args, wsHandler);
+    } catch (error) {
+      console.error(`[Unity MCP] Error executing ${name} command: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw error;
+    }
   });
 
   // Execute Unity tool function
-  async function executeUnityTool(name: string, args: any) {
+  async function executeUnityTool(name: string, args: any, wsHandler: WebSocketHandler) {
     switch (name) {
       case 'get_editor_state': {
         try {
@@ -524,8 +546,13 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
           const instanceIDs = args.instanceIDs;
           const detailLevel = (args?.detailLevel as string) || 'IncludeComponents';
           
-          // Send request to Unity and wait for response
+          // Log more details about the request
+          console.error(`[Unity MCP] Requesting game objects info for ${instanceIDs.length} objects with detail level ${detailLevel}`);
+          
+          // Use a longer 120-second timeout for this operation
           const gameObjectsInfo = await wsHandler.requestGameObjectsInfo(instanceIDs, detailLevel);
+          
+          console.error(`[Unity MCP] Successfully received game objects info response`);
           
           return {
             content: [{
@@ -534,6 +561,7 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
             }]
           };
         } catch (error) {
+          console.error(`[Unity MCP] Error in get_game_objects_info: ${error instanceof Error ? error.message : 'Unknown error'}`);
           throw new McpError(
             ErrorCode.InternalError,
             `Failed to get GameObject info: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -631,22 +659,57 @@ export function registerTools(server: Server, wsHandler: WebSocketHandler) {
     }
   }
 
+  // Utility function to handle makeUnityRequest with retry logic
+  async function makeUnityRequestWithRetry<T>(
+    requestFn: () => Promise<T>,
+    timeoutMs: number = 120000, // Increased default to 120 seconds
+    maxRetries: number = 2
+  ): Promise<T> {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        console.error(`[Unity MCP] Making request attempt ${attempt + 1}/${maxRetries + 1}`);
+        
+        // Return the promise directly without a separate timeout race
+        // This allows the underlying request to use its own timeout
+        return await requestFn();
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.error(`[Unity MCP] Request attempt ${attempt + 1} failed: ${lastError.message}`);
+        
+        if (attempt < maxRetries) {
+          console.error(`[Unity MCP] Waiting before retry...`);
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    }
+    
+    console.error(`[Unity MCP] All ${maxRetries + 1} request attempts failed`);
+    throw lastError || new Error('Request failed after retries');
+  }
+
   // Clean up resources when server is closing
   return {
     cleanup: () => {
+      // Clear command processor interval
       if (commandProcessorInterval) {
         clearInterval(commandProcessorInterval);
         commandProcessorInterval = null;
       }
       
       // Reject any pending commands
-      for (const cmd of commandBuffer) {
-        cmd.reject(new McpError(
-          ErrorCode.InternalError,
-          'Server is shutting down, command aborted'
-        ));
+      if (commandBuffer.length > 0) {
+        console.error(`[Unity MCP] Rejecting ${commandBuffer.length} buffered commands due to shutdown`);
+        for (const cmd of commandBuffer) {
+          cmd.reject(new McpError(
+            ErrorCode.InternalError,
+            'Server is shutting down, command aborted'
+          ));
+        }
+        commandBuffer.length = 0;
       }
-      commandBuffer.length = 0;
     }
   };
 }
