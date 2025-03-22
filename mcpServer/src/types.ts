@@ -2,20 +2,18 @@
 
 // Unity Editor State representation
 export interface UnityEditorState {
-  activeGameObjects: string[];
-  selectedObjects: string[];
+  activeGameObjects: any[];
+  selectedObjects: any[];
   playModeState: string;
   sceneHierarchy: any;
-  // Removed projectStructure property
-  timestamp?: string;
-  // Enhanced project information fields
+  projectName?: string;
+  unityVersion?: string;
   renderPipeline?: string;
   buildTarget?: string;
-  projectName?: string;
   graphicsDeviceType?: string;
-  unityVersion?: string;
   currentSceneName?: string;
   currentScenePath?: string;
+  timestamp?: string;
   availableMenuItems?: string[];
 }
 
@@ -129,6 +127,61 @@ export type ServerMessage =
 
 // Command result handling
 export interface CommandPromise {
-  resolve: (value: any) => void;
+  resolve: (data?: any) => void;
   reject: (reason?: any) => void;
+}
+
+export interface TreeEntry {
+  name: string;
+  type: 'file' | 'directory';
+  children?: TreeEntry[];
+}
+
+export interface MCPSceneInfo {
+  name: string;
+  path: string;
+  rootGameObjects: any[];
+  buildIndex: number;
+  isDirty: boolean;
+  isLoaded: boolean;
+}
+
+export interface MCPTransformInfo {
+  position: { x: number, y: number, z: number };
+  rotation: { x: number, y: number, z: number };
+  localPosition: { x: number, y: number, z: number };
+  localRotation: { x: number, y: number, z: number };
+  localScale: { x: number, y: number, z: number };
+}
+
+export interface MCPComponentInfo {
+  type: string;
+  isEnabled: boolean;
+  instanceID: number;
+}
+
+export interface MCPGameObjectDetail {
+  name: string;
+  instanceID: number;
+  path: string;
+  active: boolean;
+  activeInHierarchy: boolean;
+  tag: string;
+  layer: number;
+  layerName: string;
+  isStatic: boolean;
+  transform: MCPTransformInfo;
+  components: MCPComponentInfo[];
+}
+
+export enum SceneInfoDetail {
+  RootObjectsOnly = 'RootObjectsOnly',
+  FullHierarchy = 'FullHierarchy'
+}
+
+export enum GameObjectInfoDetail {
+  BasicInfo = 'BasicInfo',
+  IncludeComponents = 'IncludeComponents',
+  IncludeChildren = 'IncludeChildren',
+  IncludeComponentsAndChildren = 'IncludeComponentsAndChildren'
 }

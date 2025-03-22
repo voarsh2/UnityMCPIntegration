@@ -17,7 +17,7 @@
             
             <ui:VisualElement style="flex-direction: row; align-items: center; margin-bottom: 10px;">
                 <ui:Label text="Port:" class="server-url-label" />
-                <ui:TextField name="server-port-field" value="8080" placeholder="Default: 8080" class="server-url-field" />
+                <ui:TextField name="server-port-field" value="5010" placeholder="Default: 5010" class="server-url-field" />
             </ui:VisualElement>
             
             <ui:VisualElement style="flex-direction: row; align-items: center;">

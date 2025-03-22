@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 export class WebSocketHandler {
-    wsServer;
+    wsServer; // Add definite assignment assertion
+    _port; // Make this a private field, not readonly
     unityConnection = null;
     editorState = {
         activeGameObjects: [],
@@ -15,84 +16,110 @@ export class WebSocketHandler {
     lastHeartbeat = 0;
     connectionEstablished = false;
     pendingRequests = {};
-    constructor(port = 8080) {
-        // Initialize WebSocket Server
-        this.wsServer = new WebSocketServer({ port });
-        this.setupWebSocketServer();
+    constructor(port = 5010) {
+        this._port = port; // Store in private field
+        this.initializeWebSocketServer(port);
+    }
+    // Add a getter to expose port as readonly
+    get port() {
+        return this._port;
+    }
+    initializeWebSocketServer(port) {
+        try {
+            this.wsServer = new WebSocketServer({ port });
+            this.setupWebSocketServer();
+            console.error(`[Unity MCP] WebSocket server started on port ${this._port}`);
+        }
+        catch (error) {
+            console.error(`[Unity MCP] ERROR starting WebSocket server on port ${port}:`, error);
+            this.tryAlternativePort(port);
+        }
+    }
+    tryAlternativePort(originalPort) {
+        try {
+            const alternativePort = originalPort + 1;
+            console.error(`[Unity MCP] Trying alternative port ${alternativePort}...`);
+            this._port = alternativePort; // Update the private field instead of readonly property
+            this.wsServer = new WebSocketServer({ port: alternativePort });
+            this.setupWebSocketServer();
+            console.error(`[Unity MCP] WebSocket server started on alternative port ${this._port}`);
+        }
+        catch (secondError) {
+            console.error(`[Unity MCP] FATAL: Could not start WebSocket server:`, secondError);
+            throw new Error(`Failed to start WebSocket server: ${secondError}`);
+        }
     }
     setupWebSocketServer() {
-        console.error('[Unity MCP] WebSocket server starting on port 8080');
+        console.error(`[Unity MCP] WebSocket server starting on port ${this._port}`);
         this.wsServer.on('listening', () => {
             console.error('[Unity MCP] WebSocket server is listening for connections');
         });
         this.wsServer.on('error', (error) => {
             console.error('[Unity MCP] WebSocket server error:', error);
         });
-        this.wsServer.on('connection', (ws) => {
-            console.error('[Unity MCP] Unity Editor connected');
-            this.unityConnection = ws;
-            this.connectionEstablished = true;
-            this.lastHeartbeat = Date.now();
-            // Send a simple handshake message to verify connection
-            this.sendHandshake();
-            ws.on('message', (data) => {
-                try {
-                    // Update heartbeat on any message
-                    this.lastHeartbeat = Date.now();
-                    const message = JSON.parse(data.toString());
-                    console.error('[Unity MCP] Received message type:', message.type);
-                    this.handleUnityMessage(message);
-                }
-                catch (error) {
-                    console.error('[Unity MCP] Error handling message:', error);
-                }
-            });
-            ws.on('error', (error) => {
-                console.error('[Unity MCP] WebSocket error:', error);
-                this.connectionEstablished = false;
-            });
-            ws.on('close', () => {
-                console.error('[Unity MCP] Unity Editor disconnected');
-                this.unityConnection = null;
-                this.connectionEstablished = false;
-            });
-            // Keep the automatic heartbeat for internal connection validation
-            const pingInterval = setInterval(() => {
-                if (ws.readyState === WebSocket.OPEN) {
-                    this.sendPing();
-                }
-                else {
-                    clearInterval(pingInterval);
-                }
-            }, 30000); // Send heartbeat every 30 seconds
+        this.wsServer.on('connection', this.handleNewConnection.bind(this));
+    }
+    handleNewConnection(ws) {
+        console.error('[Unity MCP] Unity Editor connected');
+        this.unityConnection = ws;
+        this.connectionEstablished = true;
+        this.lastHeartbeat = Date.now();
+        // Send a simple handshake message to verify connection
+        this.sendHandshake();
+        ws.on('message', (data) => this.handleIncomingMessage(data));
+        ws.on('error', (error) => {
+            console.error('[Unity MCP] WebSocket error:', error);
+            this.connectionEstablished = false;
         });
+        ws.on('close', () => {
+            console.error('[Unity MCP] Unity Editor disconnected');
+            this.unityConnection = null;
+            this.connectionEstablished = false;
+        });
+        // Keep the automatic heartbeat for internal connection validation
+        const pingInterval = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+                this.sendPing();
+            }
+            else {
+                clearInterval(pingInterval);
+            }
+        }, 30000); // Send heartbeat every 30 seconds
+    }
+    handleIncomingMessage(data) {
+        try {
+            // Update heartbeat on any message
+            this.lastHeartbeat = Date.now();
+            const message = JSON.parse(data.toString());
+            console.error('[Unity MCP] Received message type:', message.type);
+            this.handleUnityMessage(message);
+        }
+        catch (error) {
+            console.error('[Unity MCP] Error handling message:', error);
+        }
     }
     sendHandshake() {
-        try {
-            if (this.unityConnection && this.unityConnection.readyState === WebSocket.OPEN) {
-                this.unityConnection.send(JSON.stringify({
-                    type: 'handshake',
-                    data: { message: 'MCP Server Connected' }
-                }));
-                console.error('[Unity MCP] Sent handshake message');
-            }
-        }
-        catch (error) {
-            console.error('[Unity MCP] Error sending handshake:', error);
-        }
+        this.sendToUnity({
+            type: 'handshake',
+            data: { message: 'MCP Server Connected' }
+        });
     }
-    // Rename from sendHeartbeat to sendPing for consistency with protocol
+    // Renamed from sendHeartbeat to sendPing for consistency with protocol
     sendPing() {
+        this.sendToUnity({
+            type: "ping",
+            data: { timestamp: Date.now() }
+        });
+    }
+    // Helper method to safely send messages to Unity
+    sendToUnity(message) {
         try {
             if (this.unityConnection && this.unityConnection.readyState === WebSocket.OPEN) {
-                this.unityConnection.send(JSON.stringify({
-                    type: "ping",
-                    data: { timestamp: Date.now() }
-                }));
+                this.unityConnection.send(JSON.stringify(message));
             }
         }
         catch (error) {
-            console.error('[Unity MCP] Error sending ping:', error);
+            console.error(`[Unity MCP] Error sending message: ${error}`);
             this.connectionEstablished = false;
         }
     }
@@ -118,23 +145,22 @@ export class WebSocketHandler {
                 this.connectionEstablished = true;
                 break;
             case 'sceneInfo':
-                // Handle scene info response
-                const sceneRequestId = message.data?.requestId;
-                if (sceneRequestId && this.pendingRequests[sceneRequestId]) {
-                    this.pendingRequests[sceneRequestId].resolve(message.data);
-                    delete this.pendingRequests[sceneRequestId];
-                }
-                break;
             case 'gameObjectsDetails':
-                // Handle game objects details response
-                const goRequestId = message.data?.requestId;
-                if (goRequestId && this.pendingRequests[goRequestId]) {
-                    this.pendingRequests[goRequestId].resolve(message.data);
-                    delete this.pendingRequests[goRequestId];
-                }
+                this.handleRequestResponse(message);
                 break;
             default:
-                console.error('[Unity MCP] Unknown message type:', message.type);
+                console.error('[Unity MCP] Unknown message type:', message);
+                break;
+        }
+    }
+    handleRequestResponse(message) {
+        const requestId = message.data?.requestId;
+        if (requestId && this.pendingRequests[requestId]) {
+            // Fix the type issue by checking the property exists first
+            if (this.pendingRequests[requestId]) {
+                this.pendingRequests[requestId].resolve(message.data);
+                delete this.pendingRequests[requestId];
+            }
         }
     }
     addLogEntry(logEntry) {
@@ -152,10 +178,10 @@ export class WebSocketHandler {
             // Start timing the command execution
             this.commandStartTime = Date.now();
             // Send the command to Unity
-            this.unityConnection.send(JSON.stringify({
+            this.sendToUnity({
                 type: 'executeEditorCommand',
                 data: { code }
-            }));
+            });
             // Wait for result with timeout
             return await Promise.race([
                 new Promise((resolve, reject) => {
@@ -178,8 +204,17 @@ export class WebSocketHandler {
     getLogEntries(options = {}) {
         const { types, count = 100, fields, messageContains, stackTraceContains, timestampAfter, timestampBefore } = options;
         // Apply all filters
-        let filteredLogs = this.logBuffer
-            .filter(log => {
+        let filteredLogs = this.filterLogs(types, messageContains, stackTraceContains, timestampAfter, timestampBefore);
+        // Apply count limit
+        filteredLogs = filteredLogs.slice(-count);
+        // Apply field selection if specified
+        if (fields?.length) {
+            return this.selectFields(filteredLogs, fields);
+        }
+        return filteredLogs;
+    }
+    filterLogs(types, messageContains, stackTraceContains, timestampAfter, timestampBefore) {
+        return this.logBuffer.filter(log => {
             // Type filter
             if (types && !types.includes(log.logType))
                 return false;
@@ -196,28 +231,24 @@ export class WebSocketHandler {
                 return false;
             return true;
         });
-        // Apply count limit
-        filteredLogs = filteredLogs.slice(-count);
-        // Apply field selection if specified
-        if (fields?.length) {
-            return filteredLogs.map(log => {
-                const selectedFields = {};
-                fields.forEach(field => {
-                    if (field in log) {
-                        selectedFields[field] = log[field];
-                    }
-                });
-                return selectedFields;
+    }
+    selectFields(logs, fields) {
+        return logs.map(log => {
+            const selectedFields = {};
+            fields.forEach(field => {
+                if (field in log) {
+                    selectedFields[field] = log[field];
+                }
             });
-        }
-        return filteredLogs;
+            return selectedFields;
+        });
     }
     isConnected() {
         // More robust connection check
         if (this.unityConnection === null || this.unityConnection.readyState !== WebSocket.OPEN) {
             return false;
         }
-        // Check if we've received messages from Unity recently (within last 2 minutes)
+        // Check if we've received messages from Unity recently
         if (!this.connectionEstablished) {
             return false;
         }
@@ -230,91 +261,83 @@ export class WebSocketHandler {
         return true;
     }
     requestEditorState() {
-        if (!this.isConnected()) {
-            return;
-        }
-        try {
-            this.unityConnection.send(JSON.stringify({
-                type: 'requestEditorState',
-                data: {}
-            }));
-            console.error('[Unity MCP] Requested editor state');
-        }
-        catch (error) {
-            console.error('[Unity MCP] Error requesting editor state:', error);
-        }
+        this.sendToUnity({
+            type: 'requestEditorState',
+            data: {}
+        });
     }
     async requestSceneInfo(detailLevel) {
-        if (!this.isConnected()) {
-            throw new Error('Unity Editor is not connected');
-        }
-        const requestId = crypto.randomUUID();
-        // Create a promise that will be resolved when we get the response
-        const responsePromise = new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
-                delete this.pendingRequests[requestId];
-                reject(new Error('Request for scene info timed out'));
-            }, 10000); // 10 second timeout
-            this.pendingRequests[requestId] = {
-                resolve: (data) => {
-                    clearTimeout(timeout);
-                    resolve(data.sceneInfo);
-                },
-                reject,
-                type: 'sceneInfo'
-            };
-        });
-        // Send the request to Unity
-        this.unityConnection.send(JSON.stringify({
-            type: 'getSceneInfo',
-            data: {
-                requestId,
-                detailLevel
-            }
-        }));
-        return responsePromise;
+        return this.makeUnityRequest('getSceneInfo', { detailLevel }, 'sceneInfo');
     }
     async requestGameObjectsInfo(instanceIDs, detailLevel) {
+        return this.makeUnityRequest('getGameObjectsInfo', { instanceIDs, detailLevel }, 'gameObjectDetails');
+    }
+    async makeUnityRequest(type, data, resultField) {
         if (!this.isConnected()) {
             throw new Error('Unity Editor is not connected');
         }
         const requestId = crypto.randomUUID();
+        data.requestId = requestId;
         // Create a promise that will be resolved when we get the response
         const responsePromise = new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
                 delete this.pendingRequests[requestId];
-                reject(new Error('Request for GameObjects info timed out'));
+                reject(new Error(`Request for ${type} timed out`));
             }, 10000); // 10 second timeout
             this.pendingRequests[requestId] = {
                 resolve: (data) => {
                     clearTimeout(timeout);
-                    resolve(data.gameObjectDetails);
+                    resolve(data[resultField]);
                 },
                 reject,
-                type: 'gameObjectsDetails'
+                type
             };
         });
         // Send the request to Unity
-        this.unityConnection.send(JSON.stringify({
-            type: 'getGameObjectsInfo',
-            data: {
-                requestId,
-                instanceIDs,
-                detailLevel
-            }
-        }));
+        this.sendToUnity({
+            type,
+            data
+        });
         return responsePromise;
+    }
+    // Support for file system tools by adding a method to send generic messages
+    async sendMessage(message) {
+        if (this.unityConnection && this.unityConnection.readyState === WebSocket.OPEN) {
+            const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
+            return new Promise((resolve, reject) => {
+                this.unityConnection.send(messageStr, (err) => {
+                    if (err) {
+                        reject(err);
+                    }
+                    else {
+                        resolve();
+                    }
+                });
+            });
+        }
+        return Promise.resolve();
     }
     async close() {
         if (this.unityConnection) {
-            this.unityConnection.close();
+            try {
+                this.unityConnection.close();
+            }
+            catch (error) {
+                console.error('[Unity MCP] Error closing Unity connection:', error);
+            }
             this.unityConnection = null;
         }
         return new Promise((resolve) => {
-            this.wsServer.close(() => {
-                console.error('[Unity MCP] WebSocket server closed');
-                resolve();
-            });
+            try {
+                this.wsServer.close(() => {
+                    console.error('[Unity MCP] WebSocket server closed');
+                    resolve();
+                });
+            }
+            catch (error) {
+                console.error('[Unity MCP] Error closing WebSocket server:', error);
+                resolve(); // Resolve anyway to allow the process to exit
+            }
         });
     }
 }
