@@ -93,34 +93,36 @@ namespace Plugins.GamePilot.Editor.MCP
             // Only add the most essential references to avoid conflicts
             try
             {
-                // Core Unity and .NET references
-                options.ReferencedAssemblies.Add(typeof(UnityEngine.Object).Assembly.Location); // UnityEngine
-                options.ReferencedAssemblies.Add(typeof(UnityEditor.Editor).Assembly.Location); // UnityEditor
-                options.ReferencedAssemblies.Add(typeof(System.Object).Assembly.Location); // mscorlib
-                
-                // Add System.Core for LINQ
+                // Use a HashSet to track added assemblies and avoid duplicates
+                var addedAssemblies = new HashSet<string>();
+
+                // Core Unity references (these are essential and shouldn't conflict)
+                AddAssemblyIfNotExists(options, addedAssemblies, typeof(UnityEngine.Object).Assembly.Location); // UnityEngine
+                AddAssemblyIfNotExists(options, addedAssemblies, typeof(UnityEditor.Editor).Assembly.Location); // UnityEditor
+
+                // For system types, prefer mscorlib over netstandard to avoid conflicts
+                // Only add mscorlib, NOT netstandard (this was causing the conflicts)
+                AddAssemblyIfNotExists(options, addedAssemblies, typeof(System.Object).Assembly.Location); // mscorlib
+
+                // Add System.Core for LINQ support, but check for conflicts
                 var systemCore = AppDomain.CurrentDomain.GetAssemblies()
                     .FirstOrDefault(a => a.GetName().Name == "System.Core");
                 if (systemCore != null && !string.IsNullOrEmpty(systemCore.Location))
                 {
-                    options.ReferencedAssemblies.Add(systemCore.Location);
+                    AddAssemblyIfNotExists(options, addedAssemblies, systemCore.Location);
                 }
-                
-                // Add netstandard reference
-                var netStandardAssembly = AppDomain.CurrentDomain.GetAssemblies()
-                    .FirstOrDefault(a => a.GetName().Name == "netstandard");
-                if (netStandardAssembly != null && !string.IsNullOrEmpty(netStandardAssembly.Location))
-                {
-                    options.ReferencedAssemblies.Add(netStandardAssembly.Location);
-                }
-                
-                // Add essential Unity modules
-                AddUnityModule(options, "UnityEngine.CoreModule");
-                AddUnityModule(options, "UnityEngine.PhysicsModule");
-                AddUnityModule(options, "UnityEngine.UIModule");
-                AddUnityModule(options, "UnityEngine.InputModule");
-                AddUnityModule(options, "UnityEngine.AnimationModule");
-                AddUnityModule(options, "UnityEngine.IMGUIModule");
+
+                // DO NOT add netstandard - this was causing the "predefined type defined multiple times" errors
+                // The mscorlib reference above provides all the basic system types we need
+
+                // Add essential Unity modules (but check for conflicts)
+                AddUnityModuleSafe(options, addedAssemblies, "UnityEngine.CoreModule");
+                AddUnityModuleSafe(options, addedAssemblies, "UnityEngine.PhysicsModule");
+                AddUnityModuleSafe(options, addedAssemblies, "UnityEngine.UIModule");
+                AddUnityModuleSafe(options, addedAssemblies, "UnityEngine.InputModule");
+                AddUnityModuleSafe(options, addedAssemblies, "UnityEngine.AnimationModule");
+                AddUnityModuleSafe(options, addedAssemblies, "UnityEngine.IMGUIModule");
+                AddUnityModuleSafe(options, addedAssemblies, "UnityEngine.AudioModule");
             }
             catch (Exception ex)
             {
@@ -128,14 +130,42 @@ namespace Plugins.GamePilot.Editor.MCP
             }
         }
 
+        private void AddAssemblyIfNotExists(CompilerParameters options, HashSet<string> addedAssemblies, string assemblyLocation)
+        {
+            if (!string.IsNullOrEmpty(assemblyLocation) && !addedAssemblies.Contains(assemblyLocation))
+            {
+                options.ReferencedAssemblies.Add(assemblyLocation);
+                addedAssemblies.Add(assemblyLocation);
+            }
+        }
+
+        private void AddUnityModuleSafe(CompilerParameters options, HashSet<string> addedAssemblies, string moduleName)
+        {
+            try
+            {
+                var assembly = AppDomain.CurrentDomain.GetAssemblies()
+                    .FirstOrDefault(a => a.GetName().Name == moduleName);
+
+                if (assembly != null && !string.IsNullOrEmpty(assembly.Location))
+                {
+                    AddAssemblyIfNotExists(options, addedAssemblies, assembly.Location);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"Failed to add Unity module {moduleName}: {ex.Message}");
+            }
+        }
+
+        // Keep the old method for backward compatibility, but make it safer
         private void AddUnityModule(CompilerParameters options, string moduleName)
         {
             try
             {
                 var assembly = AppDomain.CurrentDomain.GetAssemblies()
                     .FirstOrDefault(a => a.GetName().Name == moduleName);
-                    
-                if (assembly != null && !string.IsNullOrEmpty(assembly.Location) && 
+
+                if (assembly != null && !string.IsNullOrEmpty(assembly.Location) &&
                     !options.ReferencedAssemblies.Contains(assembly.Location))
                 {
                     options.ReferencedAssemblies.Add(assembly.Location);
